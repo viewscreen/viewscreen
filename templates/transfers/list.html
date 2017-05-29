@@ -1,0 +1,47 @@
+{{if or $.Transfers $.TransfersPending}}
+    <h5 class="ui header">
+        {{len $.Transfers}} active &nbsp; {{len $.TransfersPending}} queued
+    </h5>
+{{end}}
+
+{{range $t := $.Transfers}}
+    {{$percent := percent $t.CompletedSize $t.TotalSize}}
+    <table class="ui single line fixed table">
+        <tbody>
+            <tr>
+                <td class="twelve wide">
+                    <h4 class="truncate">
+                        {{$t.String}}
+                    </h4>
+                </td>
+                <td class="four wide">
+                    <a target="_parent" href="/trickle/transfers/cancel/{{$t.ID}}" data-prompt="Cancel {{$t.String}}?" class="confirm ui right floated mini red basic button">Cancel</i></a>
+                </td>
+            </tr>
+            {{if $t.CompletedSize}}
+            <tr>
+                <td colspan="2">
+                    <div id="progress-{{$t.ID}}" class="ui indicating progress" data-percent="{{$percent | printf "%.0f"}}">
+                        <div class="bar"></div>
+                        <div class="label">
+                            {{bytes $t.CompletedSize}}
+                            ({{$percent | printf "%.0f"}}%)
+                                of
+                            {{bytes $t.TotalSize}}
+                        </div>
+                    </div>
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+    <script>
+        $(document).ready(function() {
+            $('#progress-{{$t.ID}}').progress({
+                duration: 0,
+                showActivity: false
+            });
+        })
+    </script>
+    <div class="ui hidden divider"></div>
+{{end}}

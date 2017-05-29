@@ -1,0 +1,62 @@
+{{template "header.html" .}}
+
+<div class="ui container">
+
+    <div class="ui clearing inverted segment">
+        <h4 class="truncate ui left aligned inverted header">
+            {{$.Download.ID}}
+        </h4>
+    </div>
+
+    <table class="ui single line fixed selectable table">
+        <tbody>
+            <tr>
+                <td class="ten wide">
+                    <i class="blue level up icon"></i>
+                    <a target="_parent" href="/trickle/">Downloads</a>
+                </td>
+                <td class="three wide">&nbsp;</td>
+                <td class="two wide">&nbsp;</td>
+            </tr>
+            {{range $file := $.Download.Files}}
+            <tr>
+                <td>
+                    {{if $file.Viewable}}
+                    <a target="_parent" href="/trickle/downloads/view/{{$.Download.ID}}/{{$file.ID}}">
+                        <i class="play icon"></i>
+                    {{else if $file.Clickable}}
+                    <a target="_parent" href="/trickle/downloads/stream/{{$.Download.ID}}/{{$file.ID}}">
+                        <i class="file icon"></i>
+                    {{else if $file.Transcoding}}
+                    <a target="_parent" href="/trickle/downloads/save/{{$.Download.ID}}/{{$file.ID}}">
+                        <i class="orange asterisk loading icon"></i>
+                    {{else}}
+                    <a target="_parent" href="/trickle/downloads/save/{{$.Download.ID}}/{{$file.ID}}">
+                        <i class="download icon"></i>
+                    {{end}}
+                        {{$file.ID}}
+                    </a>
+                </td>
+                {{if $file.Transcoding}}
+                    <td class="right aligned">
+                        <a href="/trickle/transcode/cancel/{{$.Download.ID}}/{{$file.ID}}" class="ui red mini button">Cancel</a>
+                    </td>
+                {{else if $file.Convertible}}
+                    <td class="right aligned">
+                        <a href="/trickle/transcode/start/{{$.Download.ID}}/{{$file.ID}}" class="ui orange mini button">Convert (MP4)</a>
+                    </td>
+                {{else}}
+                    <td class="right aligned">&nbsp;</td>
+                {{end}}
+                <td class="right aligned">
+                    {{bytes $file.Info.Size}}
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+
+</div>
+
+{{template "footer.html" .}}
+

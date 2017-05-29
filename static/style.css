@@ -1,0 +1,55 @@
+.navmenu {
+    background-color: #1d1d1d !important;
+    border-radius: 0 !important;
+}
+
+.navmenu img {
+    max-width: 22px;
+}
+
+video {
+    width: 100%;
+    border-radius: 3px;
+}
+
+.block.link {
+    display: block;
+    color: #4183C4;
+    font-size: 1.1em;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    margin-top: 0.3em;
+}
+
+.block.link:visited, .block.link:hover {
+    color: #29537d;
+}
+
+.full.height {
+    min-height: 100%;
+}
+
+.file-size {
+    font-size: 1.1em;
+    margin-top: 0.3em;
+}
+
+.truncate {
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+
+.ui.positive.message a {
+    float: right;
+}
+
+/* toggler */
+.toggler {}
+
+.hide.toggler {
+    display: none;
+}
+

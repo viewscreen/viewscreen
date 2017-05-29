@@ -1,0 +1,41 @@
+
+        {{if ne $.Section "nonav"}}
+        </div><!--full height-->
+
+        <div class="ui container">
+            <div class="ui right floated horizontal list">
+                <div class="disabled item" href="/trickle/">Trickle Cloud {{$.Version}}</div>
+            </div>
+
+            <div class="ui horizontal list">
+                <div class="item">&nbsp;</div>
+            </div>
+        </div>
+        {{end}}
+
+        <script>
+            $(document).ready(function() {
+                $('.ui.checkbox').checkbox();
+                $('.ui.dropdown').dropdown();
+                $('.select.dropdown').dropdown();
+
+                $(document).on('click', '.confirm', function() {
+                    return confirm($(this).data('prompt'));
+                });
+
+                // Togglers
+                $(document).on('click', '.toggler', function() {
+                    var target = $(this).siblings(".toggler");
+                    var action = $(this).data("action");
+                    $(this).toggle();
+                    $(target).toggle();
+                    $.ajax({ type: "POST", url: action });
+                });
+                /* $('.message .close').on('click', function() { $(this).closest('.message').transition('fade'); }); */
+
+                // set volume on video player to 50%
+                $('video').prop('volume', 0.5);
+            });
+        </script>
+    </body>
+</html>

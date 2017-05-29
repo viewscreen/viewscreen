@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+        <meta name="referrer" content="origin">
+        <link rel="icon" href="/trickle/static/logo.png">
+        <link rel="apple-touch-icon" href="/trickle/static/logo.png">
+
+        <title>Trickle</title>
+
+        <link rel="stylesheet" type="text/css" href="/trickle/static/roboto.css">
+        <link rel="stylesheet" type="text/css" href="/trickle/static/semantic/semantic.min.css">
+        <link rel="stylesheet" type="text/css" href="/trickle/static/style.css">
+
+        <script src="/trickle/static/jquery.min.js"></script>
+        <script src="/trickle/static/semantic/semantic.min.js"></script>
+    </head>
+    <body>
+
+        {{if ne $.Section "nonav"}}
+        <div class="navmenu ui small inverted menu">
+            {{if $.Backlink}}
+            <a class="item" href="{{.Backlink}}">
+                <i class="chevron left icon"></i>
+            </a>
+            {{end}}
+            <a class="item" href="/trickle/">
+                <img src="/trickle/static/logo.png">
+            </a>
+            
+            <a href="/trickle/" class="{{if eq $.Section "downloads"}}active{{end}} item">
+                <i class="cloud download icon"></i>Downloads
+            </a>
+            <a href="/trickle/friends" class="{{if eq $.Section "friends"}}active{{end}} item">
+                <i class="users icon"></i>Friends
+            </a>
+
+            <div class="right menu">
+                <div class="item">
+                    &nbsp;
+                </div>
+            </div>
+        </div>
+        {{end}}
+
+        {{with $message := $.Request.FormValue "message"}}
+            <div class="ui container">
+                <div class="ui positive message">
+                    {{if eq $message "feedsecretreset"}}
+                        <a href="/trickle/"><i class="close icon"></i></a>
+                        <div class="header">
+                            Success: feed secret reset 
+                        </div>
+                    {{else if eq $message "transferstarted"}}
+                        <a href="/trickle/"><i class="close icon"></i></a>
+                        <div class="header">
+                            Success: transfer started
+                        </div>
+                    {{else if eq $message "transfercanceled"}}
+                        <a href="/trickle/"><i class="close icon"></i></a>
+                        <div class="header">
+                            Success: transfer canceled
+                        </div>
+                    {{else if eq $message "downloadremoved"}}
+                        <a href="/trickle/"><i class="close icon"></i></a>
+                        <div class="header">
+                            Success: download deleted
+                        </div>
+                    {{else if eq $message "friendstarted"}}
+                        <a href="/trickle/friends"><i class="close icon"></i></a>
+                        <div class="header">
+                            Success: friend download started
+                        </div>
+                    {{else if eq $message "friendinvalidhost"}}
+                        <a href="/trickle/friends"><i class="close icon"></i></a>
+                        <div class="header">
+                            Error: invalid friend host
+                        </div>
+                    {{else if eq $message "friendadded"}}
+                        <a href="/trickle/friends"><i class="close icon"></i></a>
+                        <div class="header">
+                            Success: friend added
+                        </div>
+                    {{else if eq $message "friendremoved"}}
+                        <a href="/trickle/friends"><i class="close icon"></i></a>
+                        <div class="header">
+                            Success: friend deleted
+                        </div>
+                    {{end}}
+                </div>
+                <div class="ui hidden divider"></div>
+            </div>
+        {{end}}
+
+        {{with $error := $.Error}}
+            <div class="ui container">
+                <div class="ui negative icon message">
+                    <i class="warning sign icon"></i>
+                    <div class="content">
+                        <div class="header">{{$error}}</div>
+                    </div>
+                </div>
+                <div class="ui hidden divider"></div>
+            </div>
+        {{end}}
+
+        {{if ne $.Section "nonav"}}
+        <div class="full height">
+        {{end}}
+

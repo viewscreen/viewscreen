@@ -1,0 +1,75 @@
+{{template "header.html" .}}
+
+<div class="ui container">
+    <form class="ui large form" method="POST" action="/trickle/friends/add">
+        <div class="field">
+            <div class="ui action input">
+                <input type="text" name="host" placeholder="e.g. friend.example.com">
+                <button type="submit" class="ui right floated primary button">Add Friend</button>
+            </div>
+        </div>
+    </form>
+    <div class="ui hidden divider"></div>
+
+    {{if len $.Friends}}
+
+        {{range $friend := $.Friends}}
+            {{$downloads := $friend.Downloads}}
+
+            <h3>
+                <a href="/trickle/friends/remove/{{$friend.ID}}" data-prompt="Delete {{$friend.ID}}?" class="confirm ui right floated basic mini red icon button"><i class="trash icon"></i></a>
+                {{if $downloads}}
+                    <i class="circle green icon"></i>{{$friend.ID}}
+                {{else}}
+                    <i class="circle red icon" title="{{$friend.Error}}"></i>{{$friend.ID}}
+                {{end}}
+            </h3>
+
+            {{if len $downloads}}
+            <table class="ui single line fixed selectable table">
+                <tbody>
+                {{range $dl := $downloads}}
+                    {{$dlexists := dlexists $dl.ID}}
+                    <tr>
+                        <td class="twelve wide eight wide mobile">
+                            <i class="blue folder icon"></i>
+                            {{$dl.ID}}
+                        </td>
+                        <td class="right aligned two wide four wide mobile">
+                            {{bytes $dl.Size}}
+                        </td>
+                        <td class="right aligned four wide eight wide mobile">
+                            <button class="{{if not $dlexists}}hide{{end}} toggler ui button" disabled>Download</button>
+                            <button class="{{if $dlexists }}hide{{end}} toggler ui button" data-action="/trickle/friends/download/{{$friend.ID}}/{{$dl.ID}}">Download</a>
+                        </td>
+                    </tr>
+                {{end}}
+                </tbody>
+            </table>
+            {{end}}
+
+            <div class="ui hidden divider"></div>
+            <div class="ui hidden divider"></div>
+        {{end}}
+    {{else}}
+
+        <div class="ui center aligned clearing segment">
+            <div class="ui hidden divider"></div>
+
+            <h4 class="ui center aligned grey header">
+                Add a friend by entering their domain name.
+            </h4>
+
+            <div class="ui hidden divider"></div>
+        </div>
+    {{end}}
+
+    <h5 class="ui center aligned header">
+        {{$.DiskInfo.UsedGB}} GB ({{$.DiskInfo.UsedPercent | printf "%.0f"}}%) of {{$.DiskInfo.TotalGB}} GB
+    </h5> 
+
+</div>
+
+{{template "footer.html" .}}
+
+

@@ -1,0 +1,34 @@
+FROM golang:1.8.3
+MAINTAINER Trickle Cloud <github@trickle.cloud>
+
+RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /go/src/github.com/tricklecloud/trickle
+
+COPY *.go ./
+COPY internal ./internal
+COPY static ./static
+COPY templates ./templates
+
+ARG TRICKLE_VERSION=unknown
+
+ENV GODEBUG="netdns=go http2server=0"
+ENV GOPATH="/go"
+
+RUN go get -u -v github.com/golang/dep/cmd/dep && \
+    go get -u -v github.com/jteeuwen/go-bindata/... && \
+    dep init || dep ensure --update
+
+RUN go fmt && \
+    go vet -a && \
+    go-bindata --pkg main static/... templates/...
+
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    go build -v --compiler gc --ldflags "-extldflags -static -s -w -X main.version=${TRICKLE_VERSION}" -o /usr/bin/trickle-linux-amd64
+
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 \
+    go build -v --compiler gc --ldflags "-extldflags -static -s -w -X main.version=${TRICKLE_VERSION}" -o /usr/bin/trickle-linux-armv7
+
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
+    go build -v --compiler gc --ldflags "-extldflags -static -s -w -X main.version=${TRICKLE_VERSION}" -o /usr/bin/trickle-linux-arm64
+
