@@ -168,13 +168,17 @@ func library(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		return
 	}
 
-	// Top 4 recent
+	// Most recent
 	if len(dls) > 0 {
 		recent := make([]Download, len(dls))
 		copy(recent, dls)
 		sort.Slice(recent, func(i, j int) bool { return recent[i].Created.After(recent[j].Created) })
-		res.Downloads = make([]Download, 4)
-		copy(res.Downloads, recent)
+		for i, dl := range recent {
+			res.Downloads = append(res.Downloads, dl)
+			if i == 4 {
+				break
+			}
+		}
 	}
 
 	// Filter library
@@ -524,9 +528,9 @@ func importHandler(w http.ResponseWriter, r *http.Request, ps httprouter.Params)
 			Error(w, err)
 			return
 		}
-		// Truncate to 20 results max.
-		if len(results) > 20 {
-			results = results[0:19]
+		// Truncate results
+		if len(results) > 15 {
+			results = results[0:14]
 		}
 
 		res.Results = results

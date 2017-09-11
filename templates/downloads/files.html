@@ -82,7 +82,7 @@
                     {{else if $convertible}}
                         <div class="extra content">
                             {{if $.Download.Uploading}}
-                                <a class="ui orange fluid disabled button" data-tooltip="Disabled while uploading">
+                                <a class="ui orange fluid disabled button" data-tooltip="Disabled while uploading" title="Disabled while uploading">
                             {{else}}
                                 <a href="/watcher/transcode/start/{{$.Download.ID}}/{{$file.ID}}" class="ui orange fluid button">
                             {{end}}

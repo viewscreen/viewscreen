@@ -72,6 +72,7 @@ func (dl Download) Path() string {
 	path := filepath.Join(downloadDir, dl.ID)
 	path = filepath.Clean(path)
 	if path == downloadDir {
+		logger.Debugf("path %q download %q", path, dl.ID)
 		panic("invalid or missing download ID")
 	}
 	return path
