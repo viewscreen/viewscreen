@@ -1,4 +1,4 @@
-# Watcher Cloud - open source self-hosted remote torrent client, written in Go
+# Watcher - self-hosted video streaming server written in Go
 
 ![Screenshot - Downloads](https://raw.githubusercontent.com/watchercloud/watcher/master/screenshot1.png)
 
