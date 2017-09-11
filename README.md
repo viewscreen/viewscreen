@@ -1,6 +1,6 @@
 # Watcher - self-hosted video streaming server written in Go
 
-![Screencast](https://raw.githubusercontent.com/watchercloud/watcher/master/screencast.gif)
+![Screencast](https://raw.githubusercontent.com/watchercloud/watcher/master/screencast.gif?updated1)
 
 ![Screenshot - Library](https://raw.githubusercontent.com/watchercloud/watcher/master/screenshot1.png)
 ![Screenshot - Import](https://raw.githubusercontent.com/watchercloud/watcher/master/screenshot2.png)
