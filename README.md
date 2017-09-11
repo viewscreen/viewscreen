@@ -8,14 +8,14 @@
 
 ## Features
 
-* **Share downloads with friends**
-  * View all your friends’ shared downloads
-  * High speed server-to-server transfer
 * **Stream media on any device**
   * Transcode files to .mp4 (H264/AAC)
   * Web-based remote client
   * Nothing to download or install
   * Files are stored and downloaded on your server
+* **Share downloads with friends**
+  * View all your friends’ shared downloads
+  * High speed server-to-server transfer
 * **Mobile friendly web interface for torrenting**
   * Private podcast URL for mobile devices (offline downloads)
   * Save files from your server to your computer

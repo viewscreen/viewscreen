@@ -169,11 +169,13 @@ func library(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	}
 
 	// Top 4 recent
-	recent := make([]Download, len(dls))
-	copy(recent, dls)
-	sort.Slice(recent, func(i, j int) bool { return recent[i].Created.After(recent[j].Created) })
-	res.Downloads = make([]Download, 4)
-	copy(res.Downloads, recent)
+	if len(dls) > 0 {
+		recent := make([]Download, len(dls))
+		copy(recent, dls)
+		sort.Slice(recent, func(i, j int) bool { return recent[i].Created.After(recent[j].Created) })
+		res.Downloads = make([]Download, 4)
+		copy(res.Downloads, recent)
+	}
 
 	// Filter library
 	if query != "" {
