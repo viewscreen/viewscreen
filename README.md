@@ -112,30 +112,34 @@ $ watcher --letsencrypt --http-host watcher.example.com --download-dir /home/ubu
 ```
 
 ```bash
-$ watcher --help
-Usage of watcher:
+Usage of watcher-linux-amd64:
   -backlink string
-        backlink (optional)
+    	backlink (optional)
   -debug
-        debug mode
+    	debug mode
   -download-dir string
-        download directory (default "/data")
+    	download directory (default "/data")
   -http-addr string
-        listen address (default ":80")
+    	listen address (default ":80")
   -http-host string
-        HTTP host
+    	HTTP host
   -http-prefix string
-        HTTP URL prefix (not supported yet) (default "/watcher")
+    	HTTP URL prefix (not supported yet) (default "/watcher")
+  -http-username string
+    	HTTP basic auth username (default "watcher")
   -letsencrypt
-        enable TLS using Lets Encrypt
+    	enable TLS using Let's Encrypt
   -metadata
-        use metadata service
+    	use metadata service
   -reverse-proxy-header string
-        reverse proxy auth header (default "X-Authenticated-User")
+    	reverse proxy auth header (default "X-Authenticated-User")
   -reverse-proxy-ip string
-        reverse proxy auth IP
+    	reverse proxy auth IP
   -torrent-addr string
-        listen address for torrent client (default ":61337")
+    	listen address for torrent client (default ":61337")
+  -version
+    	display version and exit
+
 
 ```
 
@@ -150,8 +154,7 @@ $ sudo apt-get update
 $ sudo apt-get install -y wget ffmpeg x264
 
 # Download the watcher binary.
-$ sudo wget -O /usr/bin/watcher \
-    https://github.com/watchercloud/watcher/blob/master/watcher-linux-amd64
+$ sudo wget -O /usr/bin/watcher https://github.com/watchercloud/watcher/raw/master/watcher-linux-amd64
 
 # Make it executable.
 $ sudo chmod +x /usr/bin/watcher
@@ -160,9 +163,9 @@ $ sudo chmod +x /usr/bin/watcher
 $ sudo setcap cap_net_bind_service=+ep /usr/bin/watcher
 
 # Enable Let's Encrypt using your domain for automatic TLS configuration.
-$ watcher --letsencrypt --http-host watcher.example.com --download-dir /home/ubuntu/Downloads
+$ watcher --http-host watcher.example.com --http-username $USER --download-dir $HOME/Downloads --letsencrypt
 INFO[0000] Watcher URL: https://watcher.example.com/watcher
-INFO[0001] Login credentials: watcher / 398032092
+INFO[0001] Login credentials: <username> / <password>
 
 ```
 
