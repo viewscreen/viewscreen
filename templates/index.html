@@ -2,96 +2,118 @@
 
 <div class="ui container">
 
-    <form class="ui large form" method="POST" action="/trickle/transfers/start">
-        <div class="field">
-            <div class="ui action input">
-                <input type="text" name="target" pattern="^.{3,2000}$" title="magnet:... or http://..." placeholder="Enter a download URL e.g. magnet:... or http://ubuntu.org/ubuntu-16.04.torrent" autofocus>
-                <button type="submit" class="ui primary button">Start</button>
+    {{if not $.Query}}
+    {{if $.Downloads}}
+        <h2 class="ui header">Most Recent</h2>
+        <div class="ui stackable four column grid">
+            {{range $dl := $.Downloads}}
+                <div class="column">
+                    <div class="dlscard ui fluid card">
+                        <a class="image" href="/watcher/downloads/files/{{$dl.ID}}">
+                            {{if $dl.Thumbnail}}
+                                <img src="/watcher/downloads/stream/{{$dl.ID}}/thumbnail.png">
+                            {{else}}
+                                <img class="notfound" src="/watcher/static/notfound.png">
+                            {{end}}
+                        </a>
+                        <div class="content">
+                            <a class="breakup header" href="/watcher/downloads/files/{{$dl.ID}}">{{$dl.ID}}</a>
+                            <div class="meta">{{bytes $dl.Size}}</div>
+                        </div>
+                    </div>
+                </div>
+            {{end}}
+        </div>
+        <div class="ui hidden section divider"></div>
+    {{end}}
+    {{end}}
+
+    <h2 class="ui header">
+        Library
+        <div class="sub header">
+            {{$.DiskInfo.UsedGB}} ({{$.DiskInfo.UsedPercent | printf "%.0f"}}%) GB of {{$.DiskInfo.TotalGB}} GB
+        </div>
+    </h2>
+
+    <form class="ui small form" action="/watcher/" method="GET">
+        <div class="fields">
+            <div class="eight wide field">
+                <input type="text" name="q" value="{{$.Query}}" placeholder="Filter" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
             </div>
         </div>
     </form>
 
     <div class="ui hidden divider"></div>
 
-    <div id="transfers" class="ui container">
-        {{template "transfers/list.html" .}}
-    </div>
+    {{if $.Query}}
+        <div class="ui hidden divider"></div>
+        <a href="/watcher/" class="ui image label">{{$.Query}} <i class="delete icon"></i></a>
+        <div class="ui hidden divider"></div>
+    {{end}}
 
-    <div class="ui hidden divider"></div>
+    {{if $.Library}}
+        <div class="ui stackable four column grid">
+            {{range $dl := $.Library}}
+                <div class="column">
+                    <div class="dlscard ui fluid card">
+                        <a class="image" href="/watcher/downloads/files/{{$dl.ID}}">
+                            {{if $dl.Thumbnail}}
+                                <img src="/watcher/downloads/stream/{{$dl.ID}}/thumbnail.png">
+                            {{else}}
+                                <img class="notfound" src="/watcher/static/notfound.png">
+                            {{end}}
+                        </a>
+                        <div class="content">
+                            <a class="breakup header" href="/watcher/downloads/files/{{$dl.ID}}">{{$dl.ID}}</a>
+                            <div class="meta">{{bytes $dl.Size}}</div>
+                        </div>
+                    </div>
+                </div>
+            {{end}}
+        </div>
+    {{else}}
+        <div class="ui center aligned clearing segment">
+            <div class="ui hidden divider"></div>
+            <h4 class="ui center aligned grey header">
+                {{if $.Query}}
+                    No results for &quot;{{.Query}}&quot;
+                {{else}}
+                    There are no downloads yet.
+                {{end}}
+            </h4>
 
-    <div id="downloads" class="ui container">
-        {{template "downloads/list.html" .}}
-    </div>
+            <div class="ui hidden divider"></div>
+        </div>
+    {{end}}
+            <!--tr>
+                <td class="nomobile center aligned one wide">
+                    <a href="/watcher/downloads/files/$dl.ID">
+                        if $dl.Thumbnail
+                            <img class="thumbnail" src="/watcher/downloads/stream/$dl.ID/thumbnail.png">
+                        else
+                            <i class="big folder icon"></i>
+                        end
+                    </a>
+                </td>
+                <td class="twelve wide">
+                    <a href="/watcher/downloads/files/$dl.ID">$dl.ID</a>
+                </td>
+                <td class="right aligned three wide">
+                    bytes $dl.Size
+                </td>
+            </tr-->
 
     <div class="ui hidden divider"></div>
 
     <div class="ui one column grid">
         <div class="center aligned one column row">
             <div class="column">
-                <span>https://{{$.HTTPHost}}</span><span>/trickle/podcast/{{$.FeedSecret}}</span>
-                <span data-tooltip="Your private podcast URL (do not share)">
-                    <i class="bordered help icon"></i>
-                </span>
-                <a class="confirm ui mini basic icon button" href="/trickle/feed/reset" data-prompt="Generate new private podcast URL?" data-tooltip="Reset your private podcast URL">
-                    <i class="eraser icon"></i>
-                </a>
+				<a class="ui mini basic icon button" rel="alternate" type="application/rss+xml" href="/watcher/podcast/{{$.FeedSecret}}" data-tooltip="Your private podcast URL (do not share)"><i class="podcast icon"></i></a>
             </div>
         </div>
     </div>
 
 </div>
 
-
-
-<script>
-    window.pollerJob = {};
-    window.poller = function(target, url, delay) {
-        // Don't allow duplicate targets, so it's safe to call poller multiple times.
-        if (window.pollerJob[target] === "active") {
-            return;
-        }
-        window.pollerJob[target] = "active";
-
-        var old = '';
-        var p = function() {
-            // Target is gone, so we're done.
-            if ($(target).length === 0) {
-                delete window.pollerJob[target];
-                return
-            }
-
-            // Make the request.
-            $.ajax({
-                url: url,
-                type: 'GET',
-                success: function(data) {
-                    // A doctype tag indicates we're getting a full HTML response, not a fragment.
-                    if (data.substring(0, 50).toLowerCase().indexOf("doctype") !== -1) {
-                        return;
-                    }
-                    // We only update the target if there is a change.
-                    if (data !== old) {
-                        $(target).html(data);
-                        old = data;
-                    }
-                },
-                complete: function() {
-                    setTimeout(p, delay);
-                }
-            });
-        };
-        p();
-    };
-
-    $(document).ready(function() {
-        // Transfers should be polled immediately.
-        poller('#transfers', '/trickle/transfers/list', 2000);
-
-        // Don't start polling downloads immediately, because it's already fresh.
-        setTimeout(function() {
-            poller('#downloads', '/trickle/downloads/list', 5000);
-        }, 2500);
-    });
-</script>
 
 {{template "footer.html" .}}

@@ -1,7 +1,7 @@
 {{template "header.html" .}}
 
 <div class="ui container">
-    <form class="ui large form" method="POST" action="/trickle/friends/add">
+    <form class="ui large form" method="POST" action="/watcher/friends/add">
         <div class="field">
             <div class="ui action input">
                 <input type="text" name="host" placeholder="e.g. friend.example.com">
@@ -17,7 +17,7 @@
             {{$downloads := $friend.Downloads}}
 
             <h3>
-                <a href="/trickle/friends/remove/{{$friend.ID}}" data-prompt="Delete {{$friend.ID}}?" class="confirm ui right floated basic mini red icon button"><i class="trash icon"></i></a>
+                <a href="/watcher/friends/remove/{{$friend.ID}}" data-prompt="Delete {{$friend.ID}}?" class="confirm ui right floated basic mini red icon button"><i class="trash icon"></i></a>
                 {{if $downloads}}
                     <i class="circle green icon"></i>{{$friend.ID}}
                 {{else}}
@@ -26,21 +26,20 @@
             </h3>
 
             {{if len $downloads}}
-            <table class="ui single line fixed selectable table">
+            <table class="ui single line fixed striped selectable unstackable table">
                 <tbody>
                 {{range $dl := $downloads}}
                     {{$dlexists := dlexists $dl.ID}}
                     <tr>
-                        <td class="twelve wide eight wide mobile">
-                            <i class="blue folder icon"></i>
-                            {{$dl.ID}}
+                        <td class="twelve wide" data-tooltip="{{$dl.ID}}">
+							<i class="blue folder icon"></i>{{$dl.ID}}
                         </td>
-                        <td class="right aligned two wide four wide mobile">
+                        <td class="right aligned four wide mobile">
                             {{bytes $dl.Size}}
                         </td>
-                        <td class="right aligned four wide eight wide mobile">
-                            <button class="{{if not $dlexists}}hide{{end}} toggler ui button" disabled>Download</button>
-                            <button class="{{if $dlexists }}hide{{end}} toggler ui button" data-action="/trickle/friends/download/{{$friend.ID}}/{{$dl.ID}}">Download</a>
+                        <td class="right aligned two wide mobile">
+							<button class="{{if not $dlexists}}hide{{end}} toggler ui mini icon button" disabled><i class="cloud download icon"></i></button>
+							<button class="{{if $dlexists }}hide{{end}} toggler ui mini icon button" data-action="/watcher/friends/download/{{$friend.ID}}/{{$dl.ID}}"><i class="cloud download icon"></i></a>
                         </td>
                     </tr>
                 {{end}}

@@ -5,7 +5,6 @@
 {{end}}
 
 {{range $t := $.Transfers}}
-    {{$percent := percent $t.CompletedSize $t.TotalSize}}
     <table class="ui single line fixed table">
         <tbody>
             <tr>
@@ -15,23 +14,43 @@
                     </h4>
                 </td>
                 <td class="four wide">
-                    <a target="_parent" href="/trickle/transfers/cancel/{{$t.ID}}" data-prompt="Cancel {{$t.String}}?" class="confirm ui right floated mini red basic button">Cancel</i></a>
+					{{if $t.Uploading}}
+						<a target="_parent" href="/watcher/transfers/cancel/{{$t.ID}}" class="ui right floated mini basic button">Done</i></a>
+					{{else}}
+						<a target="_parent" href="/watcher/transfers/cancel/{{$t.ID}}" data-prompt="Cancel {{$t.String}}?" class="confirm ui right floated mini red basic button">Cancel</i></a>
+					{{end}}
                 </td>
             </tr>
-            {{if $t.CompletedSize}}
-            <tr>
-                <td colspan="2">
-                    <div id="progress-{{$t.ID}}" class="ui indicating progress" data-percent="{{$percent | printf "%.0f"}}">
-                        <div class="bar"></div>
-                        <div class="label">
-                            {{bytes $t.CompletedSize}}
+            {{if $t.Uploading}}
+                <tr>
+                    <td colspan="2">
+						Uploading
+						{{bytes $t.UploadedBytes}}
+                        {{if gt $t.SeedRatio 0.0}}
+                            {{$percent := percent $t.UploadedBytes $t.TotalSeedSize}}
                             ({{$percent | printf "%.0f"}}%)
-                                of
-                            {{bytes $t.TotalSize}}
+                            of
+                            {{bytes $t.TotalSeedSize}} ({{$t.SeedRatio | printf "%.1f"}}x)
+						{{else}}
+							(unlimited)
+						{{end}}
+                    </td>
+                </tr>
+            {{else if $t.DownloadedBytes}}
+                {{$percent := percent $t.DownloadedBytes $t.TotalSize}}
+                <tr>
+                    <td colspan="2">
+                        <div id="progress-{{$t.ID}}" class="ui indicating progress" data-percent="{{$percent | printf "%.0f"}}">
+                            <div class="bar"></div>
+                            <div class="label">
+                                Downloading {{bytes $t.DownloadedBytes}}
+                                ({{$percent | printf "%.0f"}}%)
+                                    of
+                                {{bytes $t.TotalSize}}
+                            </div>
                         </div>
-                    </div>
-                </td>
-            </tr>
+                    </td>
+                </tr>
             {{end}}
         </tbody>
     </table>

@@ -1,0 +1,51 @@
+{{template "header.html" .}}
+
+<div class="ui container">
+    <h2 class="ui header">Settings</h2>
+    <div class="ui hidden divider"></div>
+
+    <form class="ui large form" method="POST" action="/watcher/settings">
+        <div class="fields">
+            <div class="ten wide field">
+                <label>Seed ratio</label>
+            </div>
+            <div class="six wide field">
+                <input type="text" id="ratio" name="ratio" value="{{$.Config.Ratio}}" class="fluid">
+                <br>
+                <div class="ui basic mini buttons">
+                    <button class="set-input ui button" data-target="#ratio" data-value="0">Disable</button>
+                    <button class="set-input ui button" data-target="#ratio" data-value="1.0">1x</button>
+                    <button class="set-input ui button" data-target="#ratio" data-value="2.0">2x</button>
+                    <button class="set-input ui button" data-target="#ratio" data-value="5.0">5x</button>
+                    <button class="set-input ui button" data-target="#ratio" data-value="-1">Unlimited</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="ui hidden divider"></div>
+
+        <div class="fields">
+            <div class="ten wide field">
+                <label>Reset podcast secret URL</label>
+            </div>
+            <div class="six wide field">
+                <a class="confirm ui fluid red basic mini button" href="/watcher/feed/reset" data-prompt="Generate new private podcast URL?">Reset secret</a>
+            </div>
+        </div>
+
+        <div class="ui hidden divider"></div>
+        <div class="ui hidden divider"></div>
+
+        <div class="fields">
+            <div class="ten wide field">
+                <label>&nbsp;</label>
+            </div>
+            <div class="six wide field">
+                <button type="submit" class="ui fluid primary button">Save settings</button>
+            </div>
+        </div>
+    </form>
+
+</div>
+
+{{template "footer.html" .}}

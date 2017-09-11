@@ -10,27 +10,24 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tricklecloud/trickle/internal/downloader"
+	"github.com/watchercloud/watcher/internal/downloader"
+	"github.com/watchercloud/watcher/internal/search"
 
-	log "github.com/Sirupsen/logrus"
 	humanize "github.com/dustin/go-humanize"
 	httprouter "github.com/julienschmidt/httprouter"
 )
 
 type Response struct {
 	Template string
-	Error    string
 
-	Backlink string
+	HTTPHost   string
+	Error      string
+	Backlink   string
+	User       string
+	FeedSecret string
 
 	DiskInfo *DiskInfo
 	Request  *http.Request
-
-	HTTPHost string
-
-	User string
-
-	FeedSecret string
 
 	Section string
 
@@ -38,6 +35,7 @@ type Response struct {
 
 	Download  Download
 	Downloads []Download
+	Library   []Download
 
 	File File
 
@@ -45,7 +43,13 @@ type Response struct {
 	Transfers        []downloader.Transfer
 	TransfersPending []downloader.Transfer
 
+	Query string
+
+	Results []search.Result
+
 	Version string
+
+	Config *Config
 }
 
 var (
@@ -54,20 +58,19 @@ var (
 			return template.HTML(s)
 		},
 		"dlexists": func(id string) bool {
-			// Check if it's an active download.
-			active, err := ActiveDownload(id)
-			if active {
+			dl := Download{ID: id}
+			if dl.Downloading() {
 				return true
 			}
-			// Check if it's a completed download.
-			_, err = FindDownload(id)
+			_, err := FindDownload(id)
 			return err == nil
 		},
 		"percent": func(a, b int64) float64 {
 			return (float64(a) / float64(b)) * 100
 		},
 		"bytes": func(n int64) string {
-			return humanize.Bytes(uint64(n))
+			return fmt.Sprintf("%.2f GB", float64(n)/1024/1024/1024)
+			// return humanize.Bytes(uint64(n))
 		},
 		"time": humanize.Time,
 		"truncate": func(s string, n int) string {
@@ -77,6 +80,17 @@ var (
 			return s
 		},
 	}
+	errorPageHTML = `
+        <html>
+            <head>
+                <title>Error</title>
+            </head>
+            <body>
+                <h2 style="color: orangered;">ERROR</h2>
+                <h3><a href="/watcher/logs">Logs</a></h3>
+            </body>
+        </html>
+    `
 )
 
 func NewResponse(r *http.Request, ps httprouter.Params) *Response {
@@ -89,15 +103,19 @@ func NewResponse(r *http.Request, ps httprouter.Params) *Response {
 		User:       ps.ByName("user"),
 		HTTPHost:   httpHost,
 		DiskInfo:   di,
-		FeedSecret: feedSecret.Get(),
+		FeedSecret: feedsecret.Get(),
 		Version:    version,
 		Backlink:   backlink,
+		Config:     config,
 	}
 }
 
 func Error(w http.ResponseWriter, err error) {
-	log.Error(err)
-	http.Error(w, fmt.Sprintf("An error has occured: %s", err), http.StatusInternalServerError)
+	logger.Error(err)
+
+	w.WriteHeader(http.StatusInternalServerError)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, errorPageHTML)
 }
 
 func XML(w http.ResponseWriter, data interface{}) {
@@ -105,7 +123,7 @@ func XML(w http.ResponseWriter, data interface{}) {
 	enc := xml.NewEncoder(w)
 	enc.Indent("", "    ")
 	if err := enc.Encode(data); err != nil {
-		log.Error(err)
+		logger.Error(err)
 	}
 }
 
@@ -114,7 +132,7 @@ func JSON(w http.ResponseWriter, data interface{}) {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "    ")
 	if err := enc.Encode(data); err != nil {
-		log.Error(err)
+		logger.Error(err)
 	}
 }
 
@@ -157,9 +175,10 @@ func Log(h httprouter.Handle) httprouter.Handle {
 		h(w, r, ps)
 		ip, _, _ := net.SplitHostPort(r.RemoteAddr)
 		xff := r.Header.Get("X-Forwarded-For")
+		xrealip := r.Header.Get("X-Real-IP")
 		rang := r.Header.Get("Range")
 
-		log.Infof("%q %q %q %s %q %s", ip, xff, rang, r.Method, r.URL.Path, time.Since(start))
+		logger.Infof("%q %q %q %q %s %q %d ms", ip, xff, xrealip, rang, r.Method, r.RequestURI, int64(time.Since(start)/time.Millisecond))
 	}
 }
 
@@ -178,7 +197,7 @@ func Auth(h httprouter.Handle, friends bool) httprouter.Handle {
 		if friends && r.FormValue("friend") != "" {
 			func() {
 				host := r.FormValue("friend")
-				log.Debugf("auth: friend host %q", host)
+				logger.Debugf("auth: friend host %q", host)
 
 				if host == "" {
 					return
@@ -187,7 +206,7 @@ func Auth(h httprouter.Handle, friends bool) httprouter.Handle {
 				// Must be on friends list.
 				friends, err := ListFriends()
 				if err != nil {
-					log.Error(err)
+					logger.Error(err)
 					return
 				}
 				friendly := false
@@ -203,7 +222,7 @@ func Auth(h httprouter.Handle, friends bool) httprouter.Handle {
 				// Reverse IP address lookup must match claimed host.
 				if addrs, err := net.LookupHost(host); err == nil {
 					for _, addr := range addrs {
-						log.Debugf("auth: friend match on client %q", addr)
+						logger.Debugf("auth: friend match on client %q", addr)
 						if addr == clientIP {
 							failed = false
 							user = host
@@ -212,8 +231,9 @@ func Auth(h httprouter.Handle, friends bool) httprouter.Handle {
 
 						if clientIP == reverseProxyAuthIP {
 							xff := r.Header.Get("X-Forwarded-For")
-							if strings.Contains(xff, addr) { // TODO: split xff into ip:port parts
-								log.Debugf("auth: friend match addr %q in xff %q", addr, xff)
+							xrealip := r.Header.Get("X-Real-IP")
+							if strings.Contains(xff, addr) || strings.Contains(xrealip, addr) { // TODO: split xff into ip:port parts
+								logger.Debugf("auth: friend match addr %q in xff %q", addr, xff)
 								failed = false
 								user = host
 								return
@@ -227,7 +247,7 @@ func Auth(h httprouter.Handle, friends bool) httprouter.Handle {
 		} else if reverseProxyAuthIP == "" {
 			// Auth Method: Basic Auth (if we're not behind a reverse proxy, use basic auth)
 			login, password, _ := r.BasicAuth()
-			if login == "trickle" && password == authSecret.Get() {
+			if login == httpUsername && password == authsecret.Get() {
 				failed = false
 				user = login
 			} else {
@@ -236,7 +256,7 @@ func Auth(h httprouter.Handle, friends bool) httprouter.Handle {
 				return
 			}
 		} else {
-			// Method: Revesre Proxy (if we're behind a reverse proxy, trust it.)
+			// Method: Reverse Proxy (if we're behind a reverse proxy, trust it.)
 			if clientIP == reverseProxyAuthIP {
 				if u := r.Header.Get(reverseProxyAuthHeader); u != "" {
 					failed = false
@@ -246,7 +266,11 @@ func Auth(h httprouter.Handle, friends bool) httprouter.Handle {
 		}
 
 		if failed {
-			log.Errorf("auth failed: client %q", clientIP)
+			logger.Errorf("auth failed: client %q", clientIP)
+			if backlink != "" {
+				http.Redirect(w, r, backlink, http.StatusFound)
+				return
+			}
 			http.NotFound(w, r)
 			return
 		}
@@ -255,4 +279,15 @@ func Auth(h httprouter.Handle, friends bool) httprouter.Handle {
 		ps = append(ps, httprouter.Param{Key: "user", Value: user})
 		h(w, r, ps)
 	}
+}
+
+func BaseURL(r *http.Request) string {
+	scheme := r.Header.Get("X-Forwarded-Proto")
+	if scheme == "" {
+		scheme = r.Method
+	}
+	if scheme != "http" {
+		scheme = "https"
+	}
+	return fmt.Sprintf("%s://%s%s", scheme, httpHost, httpPrefix)
 }

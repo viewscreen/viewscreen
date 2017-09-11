@@ -2,59 +2,115 @@
 
 <div class="ui container">
 
-    <div class="ui clearing inverted segment">
-        <h4 class="truncate ui left aligned inverted header">
-            {{$.Download.ID}}
-        </h4>
+    <a class="ui large basic button" href="/watcher/"><i class="blue level up icon"></i>Library</a>
+
+    <a class="confirm ui right floated basic red large icon button" data-prompt="Delete download {{$.Download.ID}}?" href="/watcher/downloads/remove/{{$.Download.ID}}"><i class="trash icon"></i></a>
+
+    <button class="{{if not $.Download.Shared}}hide{{end}} toggler ui right floated large green button" title="Unshare" data-action="/watcher/downloads/unshare/{{$.Download.ID}}"><i class="checkmark icon"></i>Shared</button>
+    <button class="{{if $.Download.Shared}}hide{{end}} toggler ui right floated large green inverted button" title="Share" data-action="/watcher/downloads/share/{{$.Download.ID}}"><i class="checkmark icon"></i>Share&nbsp;</button>
+
+    <h4 class="breakup ui header">
+        {{$.Download.ID}}
+    </h4>
+
+    <div class="ui hidden clearing divider"></div>
+
+    <div class="ui stackable four column grid">
+        {{range $file := $.Download.Files false}}
+            {{$thumbnail := $file.Thumbnail}}
+            {{$clickable := $file.Clickable}}
+            {{$viewable := $file.Viewable}}
+            {{$convertible := $file.Convertible}}
+            {{$transcoding := $file.Transcoding}}
+
+            <div class="column">
+                <div class="filescard ui fluid card">
+
+                    {{if $viewable}}
+                        <a class="image" href="/watcher/downloads/view/{{$.Download.ID}}/{{$file.ID}}">
+                            {{if $thumbnail}}
+                                <img src="/watcher/downloads/stream/{{$.Download.ID}}/{{$file.ID}}.thumbnail.png">
+                            {{else}}
+                                <img class="notfound" src="/watcher/static/notfound.png">
+                            {{end}}
+                        </a>
+                    {{else if $file.Clickable}}
+                        <a class="image" href="/watcher/downloads/stream/{{$.Download.ID}}/{{$file.ID}}">
+                            {{if $thumbnail}}
+                                <img src="/watcher/downloads/stream/{{$.Download.ID}}/{{$file.ID}}.thumbnail.png">
+                            {{else}}
+                                <img class="notfound" src="/watcher/static/notfound.png">
+                            {{end}}
+                        </a>
+                    {{else}}
+                        <a class="image" href="/watcher/downloads/save/{{$.Download.ID}}/{{$file.ID}}">
+                            {{if $thumbnail}}
+                                <img src="/watcher/downloads/stream/{{$.Download.ID}}/{{$file.ID}}.thumbnail.png">
+                            {{else}}
+                                <img class="notfound" src="/watcher/static/notfound.png">
+                            {{end}}
+                        </a>
+                    {{end}}
+
+                    <div class="content">
+                        {{if $viewable}}
+                            <a class="breakup header" href="/watcher/downloads/view/{{$.Download.ID}}/{{$file.ID}}">
+                                {{$file.ID}}
+                            </a>
+                        {{else if $clickable}}
+                            <a class="breakup header" href="/watcher/downloads/stream/{{$.Download.ID}}/{{$file.ID}}">
+                                {{$file.ID}}
+                            </a>
+                        {{else if $transcoding}}
+                            <a class="breakup header" href="/watcher/downloads/save/{{$.Download.ID}}/{{$file.ID}}">
+                                {{$file.ID}}
+                            </a>
+                        {{else}}
+                            <a class="breakup header" href="/watcher/downloads/save/{{$.Download.ID}}/{{$file.ID}}">
+                                {{$file.ID}}
+                            </a>
+                        {{end}}
+                        <div class="meta">
+                            <div class="meta">{{bytes $file.Info.Size}}</div>
+                        </div>
+                    </div>
+
+                    {{if $transcoding}}
+                        <div class="extra content">
+                            <a href="/watcher/transcode/cancel/{{$.Download.ID}}/{{$file.ID}}" class="ui red fluid button"><i class="orange asterisk loading icon"></i>Cancel</a>
+                        </div>
+                    {{else if $convertible}}
+                        <div class="extra content">
+                            {{if $.Download.Uploading}}
+                                <a class="ui orange fluid disabled button" data-tooltip="Disabled while uploading">
+                            {{else}}
+                                <a href="/watcher/transcode/start/{{$.Download.ID}}/{{$file.ID}}" class="ui orange fluid button">
+                            {{end}}
+                            <i class="file video outline icon"></i>Convert MP4</a>
+                        </div>
+                    {{else}}
+                        <div class="extra content">
+                            {{if $viewable}}
+                                <a class="ui fluid basic button" href="/watcher/downloads/view/{{$.Download.ID}}/{{$file.ID}}">
+                                    <i class="play icon"></i>View
+                                </a>
+                            {{else if $clickable}}
+                                <a class="ui fluid basic button" href="/watcher/downloads/stream/{{$.Download.ID}}/{{$file.ID}}">
+                                    <i class="file icon"></i>View
+                                </a>
+                            {{else}}
+                                <a class="ui fluid basic button" href="/watcher/downloads/save/{{$.Download.ID}}/{{$file.ID}}">
+                                    <i class="download icon"></i>Download
+                                </a>
+                            {{end}}
+                        </div>
+                    {{end}}
+
+                </div>
+            </div>
+        {{end}}
     </div>
 
-    <table class="ui single line fixed selectable table">
-        <tbody>
-            <tr>
-                <td class="ten wide">
-                    <i class="blue level up icon"></i>
-                    <a target="_parent" href="/trickle/">Downloads</a>
-                </td>
-                <td class="three wide">&nbsp;</td>
-                <td class="two wide">&nbsp;</td>
-            </tr>
-            {{range $file := $.Download.Files}}
-            <tr>
-                <td>
-                    {{if $file.Viewable}}
-                    <a target="_parent" href="/trickle/downloads/view/{{$.Download.ID}}/{{$file.ID}}">
-                        <i class="play icon"></i>
-                    {{else if $file.Clickable}}
-                    <a target="_parent" href="/trickle/downloads/stream/{{$.Download.ID}}/{{$file.ID}}">
-                        <i class="file icon"></i>
-                    {{else if $file.Transcoding}}
-                    <a target="_parent" href="/trickle/downloads/save/{{$.Download.ID}}/{{$file.ID}}">
-                        <i class="orange asterisk loading icon"></i>
-                    {{else}}
-                    <a target="_parent" href="/trickle/downloads/save/{{$.Download.ID}}/{{$file.ID}}">
-                        <i class="download icon"></i>
-                    {{end}}
-                        {{$file.ID}}
-                    </a>
-                </td>
-                {{if $file.Transcoding}}
-                    <td class="right aligned">
-                        <a href="/trickle/transcode/cancel/{{$.Download.ID}}/{{$file.ID}}" class="ui red mini button">Cancel</a>
-                    </td>
-                {{else if $file.Convertible}}
-                    <td class="right aligned">
-                        <a href="/trickle/transcode/start/{{$.Download.ID}}/{{$file.ID}}" class="ui orange mini button">Convert (MP4)</a>
-                    </td>
-                {{else}}
-                    <td class="right aligned">&nbsp;</td>
-                {{end}}
-                <td class="right aligned">
-                    {{bytes $file.Info.Size}}
-                </td>
-            </tr>
-            {{end}}
-        </tbody>
-    </table>
 
 </div>
 

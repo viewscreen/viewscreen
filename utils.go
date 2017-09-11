@@ -8,12 +8,11 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"syscall"
 	"time"
-
-	log "github.com/Sirupsen/logrus"
 )
 
 type DiskInfo struct {
@@ -55,6 +54,9 @@ func ls(path string) ([]os.FileInfo, []os.FileInfo, error) {
 	var dirs []os.FileInfo
 	var files []os.FileInfo
 	for _, f := range list {
+		if strings.HasSuffix(f.Name(), "thumbnail.png") { // skip thumbnail files
+			continue
+		}
 		if strings.HasPrefix(f.Name(), ".") { // skip hidden files
 			continue
 		}
@@ -64,26 +66,26 @@ func ls(path string) ([]os.FileInfo, []os.FileInfo, error) {
 			files = append(files, f)
 		}
 	}
-	sort.Slice(dirs, func(i, j int) bool { return dirs[i].ModTime().After(dirs[j].ModTime()) })
-	sort.Slice(files, func(i, j int) bool { return files[j].ModTime().After(files[i].ModTime()) })
+	sort.Slice(dirs, func(i, j int) bool { return dirs[j].Name() > dirs[i].Name() })
+	sort.Slice(files, func(i, j int) bool { return files[j].Name() > files[i].Name() })
 	return dirs, files, nil
 }
 
 func GET(ctx context.Context, rawurl string) (*http.Response, error) {
-	return req("GET", ctx, rawurl)
+	return request("GET", ctx, rawurl)
 }
 
 func POST(ctx context.Context, rawurl string) (*http.Response, error) {
-	return req("POST", ctx, rawurl)
+	return request("POST", ctx, rawurl)
 }
 
 func DELETE(ctx context.Context, rawurl string) (*http.Response, error) {
-	return req("DELETE", ctx, rawurl)
+	return request("DELETE", ctx, rawurl)
 }
 
 const httpUserAgent = "Mozilla/5.0 (Windows NT 5.1; rv:13.0) Gecko/20100101 Firefox/13.0.1"
 
-func req(method string, ctx context.Context, rawurl string) (*http.Response, error) {
+func request(method string, ctx context.Context, rawurl string) (*http.Response, error) {
 	// TODO: investigate issues with sharing an HTTP client across requests, which would be more efficient.
 	httpClient := &http.Client{}
 
@@ -98,7 +100,7 @@ func req(method string, ctx context.Context, rawurl string) (*http.Response, err
 	}
 	req.Header.Set("User-Agent", httpUserAgent)
 
-	log.Debugf("HTTP request: %s %s", req.Method, req.URL)
+	logger.Debugf("HTTP request: %s %s", req.Method, req.URL)
 	res, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
@@ -115,4 +117,24 @@ func RandomNumber() (int, error) {
 		return 0, err
 	}
 	return int(binary.LittleEndian.Uint32(b)), nil
+}
+
+func Overwrite(filename string, data []byte, perm os.FileMode) error {
+	f, err := ioutil.TempFile(filepath.Dir(filename), filepath.Base(filename)+".tmp")
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(f.Name(), perm); err != nil {
+		return err
+	}
+	return os.Rename(f.Name(), filename)
 }

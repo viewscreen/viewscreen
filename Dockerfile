@@ -1,5 +1,5 @@
 FROM alpine:latest
-MAINTAINER Trickle Cloud <github@trickle.cloud>
+MAINTAINER Watcher Cloud <github@watcher.cloud>
 
 RUN apk --no-cache add \
     curl \
@@ -9,6 +9,6 @@ RUN apk --no-cache add \
 
 WORKDIR /data
 
-COPY trickle-linux-amd64 /usr/bin/trickle
+COPY watcher-linux-amd64 /usr/bin/watcher
 
-ENTRYPOINT ["/usr/bin/trickle"]
+ENTRYPOINT ["/usr/bin/watcher"]

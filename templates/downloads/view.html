@@ -6,14 +6,14 @@
 </style>
 
 <div class="ui container">
-    <h4 class="truncate ui inverted header">
+    <h4 class="breakup ui inverted header">
         {{$.File.ID}}
     </h4>
     <div class="ui one column grid">
         <div class="row">
             <div class="column">
                 <video controls>
-                    <source src="/trickle/downloads/stream/{{$.Download.ID}}/{{$.File.ID}}">
+                    <source src="/watcher/downloads/stream/{{$.Download.ID}}/{{$.File.ID}}">
                 </video>
             </div>
         </div>
@@ -21,11 +21,11 @@
         <div class="row">
             <div class="column">
                 <div class="ui small inverted basic buttons">
-                    <a href="/trickle/downloads/save/{{$.Download.ID}}/{{$.File.ID}}" class="ui icon button">
+                    <a href="/watcher/downloads/save/{{$.Download.ID}}/{{$.File.ID}}" class="ui icon button">
                         <i class="download icon"></i>
                         Download ({{bytes $.File.Info.Size}})
                     </a>
-                    <a target="_blank" href="/trickle/downloads/stream/{{$.Download.ID}}/{{$.File.ID}}" class="ui icon button">
+                    <a target="_blank" href="/watcher/downloads/stream/{{$.Download.ID}}/{{$.File.ID}}" class="ui icon button">
                         <i class="external square icon"></i>
                         Pop-out
                     </a>

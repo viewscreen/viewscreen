@@ -2,24 +2,29 @@ package downloader
 
 import (
 	"context"
-	"encoding/json"
-	"io/ioutil"
-	"net/http"
-
 	"crypto/md5"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
+	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
+	"go.uber.org/zap"
+
 	log "github.com/Sirupsen/logrus"
+
 	"github.com/anacrolix/torrent"
 	"github.com/anacrolix/torrent/metainfo"
+	"github.com/anacrolix/torrent/storage"
+
 	humanize "github.com/dustin/go-humanize"
 	"golang.org/x/time/rate"
 )
@@ -28,47 +33,176 @@ var (
 	ErrTransferNotFound    = errors.New("download not found")
 	ErrInsufficientStorage = errors.New("insufficient storage")
 
-	transferSlots = 3
+	// The read limit on responses expected to be relatively small.
+	httpReadLimit int64 = 10 * (1024 * 1024)
 
-	httpReadLimit int64 = 10 * (1024 * 1024) // 2 MB
-
-	torrentMaxUploadMbits   = 25 * (1024 * 1024)
-	torrentMaxDownloadMbits = 200 * (1024 * 1024)
+	// Default download speeds
+	defaultUploadSpeed   int64   = 100
+	defaultDownloadSpeed int64   = 200
+	defaultTransferSlots int     = 5
+	defaultTorrentRatio  float64 = 1.5
 )
 
 type Downloader struct {
 	mu        sync.RWMutex
-	dldir     string
-	indir     string
 	torrent   *torrent.Client
-	storage   func() int64
 	transfers []*Transfer
+
+	Config *Config
 }
 
-func NewDownloader(dldir, indir, taddr string, storage func() int64) (*Downloader, error) {
-	// Remove any existing incoming dir.
-	if len(indir) <= 1 {
-		return nil, fmt.Errorf("invalid incoming dir")
+type Config struct {
+	UploadSpeed   int64
+	DownloadSpeed int64
+	Logger        *zap.SugaredLogger
+	Space         func() int64
+
+	TorrentAddr string
+
+	// mu protects the below, which can be accessed safely using getters/setters.
+	mu            sync.RWMutex
+	TransferSlots int
+	DownloadDir   string
+	TorrentRatio  float64
+}
+
+func (c *Config) RLock(loc string) {
+	//l.Config.Logger.Debugf("RLock %s", loc)
+	c.mu.RLock()
+}
+
+func (c *Config) RUnlock(loc string) {
+	//l.Config.Logger.Debugf("RUnlock %s", loc)
+	c.mu.RUnlock()
+}
+
+func (c *Config) Lock(loc string) {
+	//l.Config.Logger.Debugf("Lock %s", loc)
+	c.mu.Lock()
+}
+func (c *Config) Unlock(loc string) {
+	//l.Config.Logger.Debugf("Unlock %s", loc)
+	c.mu.Unlock()
+}
+
+// TransferSlots
+func (c *Config) GetTransferSlots() int {
+	c.RLock("GetTransferSlots")
+	defer c.RUnlock("GetTransferSlots")
+	return c.TransferSlots
+}
+
+func (c *Config) SetTransferSlots(n int) {
+	c.Lock("SetTransferSlots")
+	defer c.Unlock("SetTransferSlots")
+	c.TransferSlots = n
+}
+
+// DownloadDir
+func (c *Config) GetDownloadDir() string {
+	c.RLock("GetDownloadDir")
+	defer c.RUnlock("GetDownloadDir")
+	return c.DownloadDir
+}
+
+func (c *Config) SetDownloadDir(path string) {
+	c.Lock("SetDownloadDir")
+	defer c.Unlock("SetDownloadDir")
+	c.DownloadDir = path
+}
+
+// TorrentRatio
+func (c *Config) GetTorrentRatio() float64 {
+	c.RLock("GetTorrentRatio")
+	defer c.RUnlock("GetTorrentRatio")
+	return c.TorrentRatio
+}
+
+func (c *Config) SetTorrentRatio(ratio float64) {
+	c.Lock("SetTorrentRatio")
+	defer c.Unlock("SetTorrentRatio")
+	c.TorrentRatio = ratio
+}
+
+func NewDownloader(cfg *Config) (*Downloader, error) {
+	// Defaults
+	if cfg.UploadSpeed == 0 {
+		cfg.UploadSpeed = defaultUploadSpeed
 	}
-	os.RemoveAll(indir)
-	if err := os.MkdirAll(indir, 0755); err != nil {
-		return nil, err
+	if cfg.DownloadSpeed == 0 {
+		cfg.DownloadSpeed = defaultDownloadSpeed
+	}
+	if cfg.TransferSlots == 0 {
+		cfg.TransferSlots = defaultTransferSlots
+	}
+	if cfg.TorrentRatio == 0 {
+		cfg.TorrentRatio = defaultTorrentRatio
+	}
+
+	if cfg.Logger == nil {
+		return nil, fmt.Errorf("a Logger is required")
 	}
 
 	// Create the download dir, if necessary.
-	if _, err := os.Stat(dldir); os.IsNotExist(err) {
-		if err := os.MkdirAll(dldir, 0755); err != nil {
+	if _, err := os.Stat(cfg.DownloadDir); os.IsNotExist(err) {
+		if err := os.MkdirAll(cfg.DownloadDir, 0750); err != nil {
 			return nil, err
 		}
 	}
 
+	// clean up temp files
+	tmpfiles, err := func() ([]string, error) {
+		files, err := ioutil.ReadDir(cfg.DownloadDir)
+		if err != nil {
+			return nil, err
+		}
+		var tmpfiles []string
+		for _, file := range files {
+			ext := strings.TrimPrefix(filepath.Ext(file.Name()), ".")
+			if ext != "uploading" && ext != "downloading" {
+				continue
+			}
+			tmpfiles = append(tmpfiles, filepath.Join(cfg.DownloadDir, file.Name()))
+		}
+		return tmpfiles, nil
+	}()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, tmp := range tmpfiles {
+		cfg.Logger.Debugf("removing temp file %q", tmp)
+		if err := os.Remove(tmp); err != nil {
+			return nil, err
+		}
+	}
+
+	// rate in bytes per second (from megabits per second)
+	uprate := int((cfg.UploadSpeed * (1024 * 1024)) / 8)
+	downrate := int((cfg.DownloadSpeed * (1024 * 1024)) / 8)
+
 	client, err := torrent.NewClient(&torrent.Config{
-		DataDir:             indir,
-		UploadRateLimiter:   rate.NewLimiter(rate.Limit(torrentMaxUploadMbits/8), torrentMaxUploadMbits/4),
-		DownloadRateLimiter: rate.NewLimiter(rate.Limit(torrentMaxDownloadMbits/8), torrentMaxDownloadMbits/4),
-		ListenAddr:          taddr,
-		Seed:                false,
-		Debug:               false,
+		DataDir:             cfg.DownloadDir,
+		ListenAddr:          cfg.TorrentAddr,
+		UploadRateLimiter:   rate.NewLimiter(rate.Limit(uprate), uprate),
+		DownloadRateLimiter: rate.NewLimiter(rate.Limit(downrate), downrate),
+		Seed:                true,
+		DefaultStorage: storage.NewFileWithCustomPathMaker(
+			cfg.DownloadDir,
+			func(baseDir string, info *metainfo.Info, infoHash metainfo.Hash) string {
+				dir := baseDir
+				// Individual files get a directory.
+				if !info.IsDir() {
+					dir = filepath.Join(baseDir, strings.TrimSuffix(info.Name, filepath.Ext(info.Name)))
+				}
+				// Mark this transfer
+				t := Transfer{DownloadDir: dir}
+				if err := t.MarkDownloading(); err != nil {
+					cfg.Logger.Error(err)
+				}
+				return dir
+			},
+		),
 	})
 	if err != nil {
 		return nil, err
@@ -76,9 +210,7 @@ func NewDownloader(dldir, indir, taddr string, storage func() int64) (*Downloade
 
 	l := &Downloader{
 		torrent: client,
-		storage: storage,
-		dldir:   dldir,
-		indir:   indir,
+		Config:  *&cfg,
 	}
 	go l.manager()
 	return l, nil
@@ -92,13 +224,16 @@ type Transfer struct {
 	Completed time.Time
 	Cancel    *context.CancelFunc
 
+	DownloadDir string
+	Uploading   bool
+	SeedRatio   float64
+
 	Torrent *torrent.Torrent
 	Error   error
 
 	// Friend downloads
-	DownloadID    string
-	DownloadSize  int64
-	DownloadInDir string
+	DownloadID   string
+	DownloadSize int64
 }
 
 //
@@ -106,21 +241,22 @@ type Transfer struct {
 //
 
 func (l *Downloader) RLock(loc string) {
-	//log.Debugf("RLock %s", loc)
+	//l.Config.Logger.Debugf("RLock %s", loc)
 	l.mu.RLock()
 }
 
 func (l *Downloader) RUnlock(loc string) {
-	//log.Debugf("RUnlock %s", loc)
+	//l.Config.Logger.Debugf("RUnlock %s", loc)
 	l.mu.RUnlock()
 }
 
 func (l *Downloader) Lock(loc string) {
-	//log.Debugf("Lock %s", loc)
+	//l.Config.Logger.Debugf("Lock %s", loc)
 	l.mu.Lock()
 }
+
 func (l *Downloader) Unlock(loc string) {
-	//log.Debugf("Unlock %s", loc)
+	//l.Config.Logger.Debugf("Unlock %s", loc)
 	l.mu.Unlock()
 }
 
@@ -131,6 +267,10 @@ func (l *Downloader) manager() {
 		active := 0
 		for _, t := range l.transfers {
 			if !t.IsActive() {
+				continue
+			}
+			// Don't count uploading transfers
+			if t.Uploading {
 				continue
 			}
 			active++
@@ -147,10 +287,10 @@ func (l *Downloader) manager() {
 				continue
 			}
 			// start
-			if active < transferSlots {
+			if active < l.Config.GetTransferSlots() {
 				active++
 				t.Started = time.Now()
-				log.Debugf("downloader starting transfer %s %s", t.ID, t.URL)
+				l.Config.Logger.Debugf("downloader starting transfer %s %s", t.ID, t.URL)
 				go l.transfer(t)
 				continue
 			}
@@ -161,19 +301,18 @@ func (l *Downloader) manager() {
 }
 
 func (l *Downloader) availableStorage(size int64) bool {
-	space := l.storage()
+	space := l.Config.Space()
 	space -= int64(float64(space) * 0.05) // reserve 5%
 
 	if size >= space {
-		log.Debugf("insufficient storage: download size %s greater than available space %s", humanize.Bytes(uint64(size)), humanize.Bytes(uint64(space)))
+		l.Config.Logger.Debugf("insufficient storage: download size %s greater than available space %s", humanize.Bytes(uint64(size)), humanize.Bytes(uint64(space)))
 		return false
 	}
 	return true
 }
 
 func (l *Downloader) transfer(t *Transfer) {
-
-	// setup
+	// Prepare
 	ctx, cancel := context.WithCancel(context.Background())
 	l.Lock("tranfer")
 	t.Cancel = &cancel
@@ -182,25 +321,110 @@ func (l *Downloader) transfer(t *Transfer) {
 	l.Unlock("transfer")
 
 	var err error
-
-	// 1. Friend Download - v1 API friend download URL (e.g. https://example.com/trickle/v1/downloads/files/<download>?friend=<host>)
-	if strings.HasPrefix(path, "/trickle/v1/downloads/files/") && friend != "" {
+	// Transfer
+	if strings.HasPrefix(path, "/watcher/v1/downloads/files/") && friend != "" {
+		// 1. Friend Download - v1 API friend download URL
+		// e.g. https://example.com/watcher/v1/downloads/files/<download>?friend=<host>
 		err = l.transferFriend(ctx, t)
-
-		// 2. Torrent
 	} else {
+		// 2. Torrent
 		err = l.transferTorrent(ctx, t)
 	}
-
 	if err != nil {
-		log.Errorf("download error: %s", err)
+		l.Config.Logger.Errorf("download error: %s", err.Error())
 	}
 
-	// Clean up after transfer.
+	// Clean up
 	l.Lock("cleanup")
 	t.Error = err
 	t.Completed = time.Now()
 	l.Unlock("cleanup")
+}
+
+func ffthumb(videofile, thumbfile string) error {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		return err
+	}
+
+	// Create temp dir.
+	tmpdir, err := ioutil.TempDir(filepath.Dir(thumbfile), ".tmpthumb")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmpdir)
+
+	// Create temp thumbnails.
+	output, err := exec.Command(ffmpeg,
+		"-y",
+		"-i", videofile,
+		"-vf", "thumbnail,scale=480:270,fps=1/6",
+		"-vframes", "5",
+		filepath.Join(tmpdir, "thumbnail%d.png"),
+	).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("ffthumb failed: %s (%s)", string(output), err)
+	}
+
+	// Copy biggest thumb to destination.
+	thumbs, err := ioutil.ReadDir(tmpdir)
+	if err != nil {
+		return err
+	}
+
+	// Find the biggest thumbnail.
+	var best string
+	var biggest int64
+	for _, t := range thumbs {
+		if t.Size() < biggest {
+			continue
+		}
+		biggest = t.Size()
+		best = filepath.Join(tmpdir, t.Name())
+	}
+	if best != "" {
+		return os.Rename(best, thumbfile)
+	}
+	return fmt.Errorf("ffthumb failed: generating failed")
+}
+
+func (l *Downloader) PostProcess(ctx context.Context, t *Transfer) error {
+	files, err := t.Files()
+	if err != nil {
+		return err
+	}
+
+	// The biggest file has the "best" thumbnail for the whole download.
+	var best string
+	var biggest int64
+	for _, fi := range files {
+		ext := strings.TrimPrefix(filepath.Ext(fi.Name()), ".")
+		switch ext {
+		case "mp4", "m4v", "avi", "flv", "mov", "mkv", "webm":
+			videofile := filepath.Join(t.DownloadDir, fi.Name())
+			thumbfile := filepath.Join(t.DownloadDir, fi.Name()+".thumbnail.png")
+
+			if err := ffthumb(videofile, thumbfile); err != nil {
+				log.Warn(err)
+				continue
+			}
+
+			if fi.Size() > biggest {
+				best = thumbfile
+			}
+		}
+	}
+
+	if best != "" {
+		if exec.Command("/bin/cp",
+			"-f",
+			best,
+			filepath.Join(t.DownloadDir, "thumbnail.png"),
+		).CombinedOutput(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (l *Downloader) transferFriend(ctx context.Context, t *Transfer) error {
@@ -251,34 +475,35 @@ func (l *Downloader) transferFriend(ctx context.Context, t *Transfer) error {
 		return ErrInsufficientStorage
 	}
 
-	indir := filepath.Join(l.indir, downloadID)
-	dldir := filepath.Join(l.dldir, downloadID)
+	dldir := filepath.Join(l.Config.GetDownloadDir(), downloadID)
 
 	// Store ID for later.
 	l.Lock("transfer friend id")
 	t.DownloadID = downloadID
 	t.DownloadSize = downloadSize
-	t.DownloadInDir = indir
+	t.DownloadDir = dldir
 	l.Unlock("transfer friend id")
 
-	// Remove the incoming directory if it exists after return.
-	defer os.RemoveAll(indir)
+	// Mark the transfer as downloading.
+	if err := t.MarkDownloading(); err != nil {
+		return err
+	}
 
-	// Download each file.
+	// Download each file in the list.
 	for _, file := range files {
 
-		dir := filepath.Join(indir, filepath.Dir(file.ID))
-		filename := filepath.Join(indir, file.ID)
+		dir := filepath.Join(dldir, filepath.Dir(file.ID))
+		filename := filepath.Join(dldir, file.ID)
 
 		// Create directory path if necessary.
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := os.MkdirAll(dir, 0750); err != nil {
 			return err
 		}
 
 		// Write file to directory.
-		endpoint := fmt.Sprintf("https://%s/trickle/v1/downloads/stream/%s/%s?friend=%s", host, downloadID, file.ID, me)
+		endpoint := fmt.Sprintf("https://%s/watcher/v1/downloads/stream/%s/%s?friend=%s", host, downloadID, file.ID, me)
 
-		log.Debugf("Downloading friend's file %s %s", file.ID, endpoint)
+		l.Config.Logger.Debugf("Downloading friend's file %s %s", file.ID, endpoint)
 
 		res, err := GET(ctx, endpoint)
 		if err != nil {
@@ -297,9 +522,10 @@ func (l *Downloader) transferFriend(ctx context.Context, t *Transfer) error {
 			return err
 		}
 	}
-
-	// Successful download.
-	return os.Rename(indir, dldir)
+	if err := l.PostProcess(ctx, t); err != nil {
+		return err
+	}
+	return t.UnmarkDownloading()
 }
 
 func (l *Downloader) transferTorrent(ctx context.Context, t *Transfer) error {
@@ -336,9 +562,10 @@ func (l *Downloader) transferTorrent(ctx context.Context, t *Transfer) error {
 		return fmt.Errorf("invalid or unrecognized torrent")
 	}
 
+	// Wait for info.
 	<-t.Torrent.GotInfo()
 
-	// ensure it's not too big
+	// Check if we have sufficient storage for the download.
 	var size int64
 	for _, file := range t.Torrent.Files() {
 		size += file.Length()
@@ -347,38 +574,85 @@ func (l *Downloader) transferTorrent(ctx context.Context, t *Transfer) error {
 		return ErrInsufficientStorage
 	}
 
-	// Do it. Do it.
+	info := t.Torrent.Info()
+
+	dldir := filepath.Join(l.Config.GetDownloadDir(), t.Torrent.Info().Name)
+
+	// Individual files get a directory.
+	if !info.IsDir() {
+		dldir = filepath.Join(l.Config.GetDownloadDir(), strings.TrimSuffix(info.Name, filepath.Ext(info.Name)))
+	}
+
+	l.Lock("setting DownloadDir")
+	t.DownloadDir = dldir
+	l.Unlock("setting DownloadDir")
+
+	// Mark the transfer as downloading.
+	if err := t.MarkDownloading(); err != nil {
+		return err
+	}
+	// Start downloading all files in the torrent.
 	t.Torrent.DownloadAll()
+
+	ticker := time.NewTicker(3 * time.Second)
 	for {
-		info := t.Torrent.Info()
-		// Drop and rename completed.
-		if t.Torrent.BytesCompleted() >= info.TotalLength() {
-			t.Torrent.Drop()
-
-			inname := filepath.Join(l.indir, info.Name) // "/data/.dls/some dir" or "/data/.dls/some file.txt"
-			dlname := filepath.Join(l.dldir, info.Name) // "/data/some dir" or "/data/some file.txt"
-			fi, err := os.Stat(inname)
-			if err != nil {
+		select {
+		case <-ctx.Done():
+			l.Config.Logger.Infof("transfer %q canceled", t.Torrent.Info().Name)
+			if err := t.UnmarkDownloading(); err != nil {
 				return err
 			}
+			return t.UnmarkUploading()
+		case <-ticker.C:
+			l.RLock("get Uploading")
+			uploading := t.Uploading
+			target := t.SeedRatio
+			l.RUnlock("get Uploading")
 
-			// If its a single file, put it in a directory e.g. "/data/file.txt" -> "/data/file/file.txt"
-			if !fi.IsDir() {
-				basename := strings.TrimSuffix(info.Name, filepath.Ext(info.Name))
-				newdir := filepath.Join(l.dldir, basename)
-				if err := os.Mkdir(newdir, 0755); err != nil {
-					return err
+			if uploading {
+				// Unless it's unlimited, cancel when the target ratio is reached.
+				if target > 0 {
+					bw := t.Torrent.Stats().DataBytesWritten
+					br := t.Torrent.Info().TotalLength()
+
+					var ratio float64
+					if bw > 0 && br > 0 {
+						ratio = float64(bw) / float64(br)
+					}
+
+					l.Config.Logger.Debugf("transfer is uploading written: %d read: %d ratio: %v >= target %v", bw, br, ratio, target)
+
+					if ratio >= target {
+						t.Torrent.Drop()
+						return t.UnmarkUploading()
+					}
 				}
-				dlname = filepath.Join(newdir, info.Name)
-			}
+			} else {
+				remaining := t.Torrent.BytesMissing()
+				l.Config.Logger.Debugf("transfer is downloading %s remaining", humanize.Bytes(uint64(remaining)))
 
-			// Rename directory into the downloads dir.
-			if err := os.Rename(inname, dlname); err != nil {
-				return err
+				if remaining == 0 {
+					if err := l.PostProcess(ctx, t); err != nil {
+						return err
+					}
+					if err := t.UnmarkDownloading(); err != nil {
+						return err
+					}
+					if target == 0 {
+						t.Torrent.Drop()
+						return nil
+					}
+
+					l.Lock("setting Uploading")
+					t.Uploading = true
+					l.Unlock("setting Uploading")
+					if err := t.MarkUploading(); err != nil {
+						return err
+					}
+				}
 			}
-			return nil
 		}
-		time.Sleep(1 * time.Second)
+		time.Sleep(3 * time.Second)
 	}
 }
 
@@ -449,6 +723,20 @@ func (l *Downloader) Waiting() int {
 	return n
 }
 
+func (l *Downloader) Downloading(name string) bool {
+	l.RLock("Downloading")
+	defer l.RUnlock("Downloading")
+	_, err := os.Stat(filepath.Join(l.Config.DownloadDir, name+".downloading"))
+	return err == nil
+}
+
+func (l *Downloader) Uploading(name string) bool {
+	l.RLock("Uploading")
+	defer l.RUnlock("Uploading")
+	_, err := os.Stat(filepath.Join(l.Config.DownloadDir, name+".uploading"))
+	return err == nil
+}
+
 func (l *Downloader) FindByURL(rawurl string) (Transfer, error) {
 	l.RLock("FindByURL")
 	defer l.RUnlock("FindByURL")
@@ -504,9 +792,10 @@ func (l *Downloader) Add(rawurl string) (Transfer, error) {
 	}
 
 	t := &Transfer{
-		ID:      fmt.Sprintf("%x", md5.Sum([]byte(u.String()))),
-		URL:     u,
-		Created: time.Now(),
+		ID:        fmt.Sprintf("%x", md5.Sum([]byte(u.String()))),
+		URL:       u,
+		Created:   time.Now(),
+		SeedRatio: l.Config.GetTorrentRatio(),
 	}
 	l.transfers = append(l.transfers, t)
 	return *t, nil
@@ -520,28 +809,36 @@ func (l *Downloader) Remove(id string) error {
 	if err != nil {
 		return err
 	}
-	// http requests get cancel()'d
+
+	// Cancel
 	if t.Cancel != nil {
 		cancel := *t.Cancel
 		cancel()
 	}
-	// torrents get dropped and their temp files deleted.
+
+	// Drop torrent.
 	if t.Torrent != nil {
 		t.Torrent.Drop()
-		if info := t.Torrent.Info(); info != nil {
-			dir := filepath.Join(l.indir, info.Name)
-			if _, err := os.Stat(dir); err == nil {
-				if err := os.RemoveAll(dir); err != nil {
-					return fmt.Errorf("failed to remove torrent dir %s: %s", dir, err)
+
+		// If it's uploading, do NOT delete it (it's complete).
+		if !t.Uploading {
+			// Clean up the download dir, if it exists.
+			if _, err := os.Stat(t.DownloadDir); err == nil {
+				if err := os.RemoveAll(t.DownloadDir); err != nil {
+					return err
 				}
 			}
 		}
 	}
 
-	// Take it out of the transfer list.
+	// Take it out of the transfer list
 	l.remove(id)
 
-	return nil
+	// Unmark
+	if err := t.UnmarkDownloading(); err != nil {
+		return err
+	}
+	return t.UnmarkUploading()
 }
 
 func (l *Downloader) remove(id string) {
@@ -565,9 +862,16 @@ func (t Transfer) String() string {
 		return t.DownloadID
 	}
 	if t.Torrent != nil {
+		var name string
+		start := time.Now()
 		if info := t.Torrent.Info(); info != nil {
-			return info.Name
+			name = info.Name
 		}
+		seconds := time.Since(start).Seconds()
+		if seconds > 0.2 {
+			log.Debugf("String() took %.2f seconds", seconds)
+		}
+		return name
 	}
 	if dn := t.URL.Query().Get("dn"); dn != "" {
 		return dn
@@ -575,18 +879,44 @@ func (t Transfer) String() string {
 	return fmt.Sprintf("Loading %s link...", t.URL.Scheme)
 }
 
-// CompletedSize returns the downloaded bytes.
-func (t Transfer) CompletedSize() int64 {
-	if t.DownloadID != "" {
-		n, err := du(t.DownloadInDir)
-		if err != nil {
-			log.Error(err)
+// TotalSeedSize returns the length of the seeding target size in bytes.
+func (t Transfer) TotalSeedSize() int64 {
+	if t.Torrent != nil {
+		if t.SeedRatio <= 0 {
 			return 0
 		}
-		return n
+		return int64(float64(t.TotalSize()) * t.SeedRatio)
 	}
+	return 0
+}
+
+// UploadedBytes returns uploaded bytes.
+func (t Transfer) UploadedBytes() int64 {
 	if t.Torrent != nil {
-		return t.Torrent.BytesCompleted()
+		return t.Torrent.Stats().DataBytesWritten
+	}
+	return 0
+}
+
+// Files returns all the files inside the download dir.
+func (t Transfer) Files() ([]os.FileInfo, error) {
+	return find(t.DownloadDir)
+}
+
+// DownloadedBytes returns the downloaded bytes.
+func (t Transfer) DownloadedBytes() int64 {
+	if t.Torrent != nil {
+		start := time.Now()
+		size := t.Torrent.BytesCompleted()
+		seconds := time.Since(start).Seconds()
+		if seconds > 0.2 {
+			log.Debugf("DownloadedBytes took %.2f seconds", seconds)
+		}
+		return size
+	}
+	if t.DownloadDir != "" {
+		n, _ := du(t.DownloadDir)
+		return n
 	}
 	return 0
 }
@@ -597,9 +927,17 @@ func (t Transfer) TotalSize() int64 {
 		return t.DownloadSize
 	}
 	if t.Torrent != nil {
+		start := time.Now()
+		var size int64
 		if info := t.Torrent.Info(); info != nil {
-			return info.TotalLength()
+			size = info.TotalLength()
 		}
+
+		seconds := time.Since(start).Seconds()
+		if seconds > 0.2 {
+			log.Debugf("TotalSize took %.2f seconds", seconds)
+		}
+		return size
 	}
 	return 0
 }
@@ -619,10 +957,56 @@ func (t Transfer) IsCompleted() bool {
 	return !t.Completed.IsZero()
 }
 
+// uploadingFile() returns the path to the uploading file
+func (t Transfer) uploadingFile() string {
+	return t.DownloadDir + ".uploading"
+}
+
+// MarkUploading creates the .uploading file
+func (t Transfer) MarkUploading() error {
+	if t.DownloadDir == "" {
+		return nil
+	}
+	return ioutil.WriteFile(t.uploadingFile(), []byte("uploading\n"), 0640)
+}
+
+// UnmarkUploading removes the .uploading file for the upload
+func (t Transfer) UnmarkUploading() error {
+	if t.DownloadDir == "" {
+		return nil
+	}
+	if _, err := os.Stat(t.uploadingFile()); os.IsNotExist(err) {
+		return nil
+	}
+	return os.Remove(t.uploadingFile())
+}
+
+// downloadingFile() returns the path to the downloading file
+func (t Transfer) downloadingFile() string {
+	return t.DownloadDir + ".downloading"
+}
+
+// MarkDownloading creates the .downloading file
+func (t Transfer) MarkDownloading() error {
+	if t.DownloadDir == "" {
+		return nil
+	}
+	return ioutil.WriteFile(t.downloadingFile(), []byte("downloading\n"), 0640)
+}
+
+// UnmarkDownloading removes the .downloading file for the download
+func (t Transfer) UnmarkDownloading() error {
+	if t.DownloadDir == "" {
+		return nil
+	}
+	if _, err := os.Stat(t.downloadingFile()); os.IsNotExist(err) {
+		return nil
+	}
+	return os.Remove(t.downloadingFile())
+}
+
 func GET(ctx context.Context, rawurl string) (*http.Response, error) {
 	httpClient := &http.Client{}
-
-	log.Debugf("GET request: %s (%s)", rawurl, ctx)
 
 	req, err := http.NewRequest("GET", rawurl, nil)
 	if err != nil {
@@ -646,14 +1030,29 @@ func GET(ctx context.Context, rawurl string) (*http.Response, error) {
 
 func du(path string) (int64, error) {
 	var size int64
-	err := filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
+	err := filepath.Walk(path, func(_ string, fi os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}
-		if !info.IsDir() {
-			size += info.Size()
+		if !fi.IsDir() {
+			size += fi.Size()
 		}
 		return nil
 	})
 	return size, err
+}
+
+func find(path string) ([]os.FileInfo, error) {
+	var files []os.FileInfo
+	err := filepath.Walk(path, func(_ string, fi os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		files = append(files, fi)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return files, err
 }

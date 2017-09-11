@@ -8,17 +8,24 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
-	//rtdebug "runtime/debug"
+	"sort"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
+	"github.com/armon/circbuf"
 
-	"github.com/tricklecloud/trickle/internal/downloader"
-	"github.com/tricklecloud/trickle/internal/transcoder"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+
+	"github.com/watchercloud/watcher/internal/downloader"
+	"github.com/watchercloud/watcher/internal/search"
+	"github.com/watchercloud/watcher/internal/transcoder"
 
 	"github.com/eduncan911/podcast"
 	"github.com/julienschmidt/httprouter"
@@ -30,17 +37,17 @@ var (
 	cli         = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 	downloadDir string
 
-	httpAddr   string
-	httpHost   string
-	httpPrefix string
+	httpAddr     string
+	httpHost     string
+	httpUsername string
+	httpPrefix   string
 
 	letsencrypt bool
 	metadata    bool
 	backlink    string
 
-	// set these based on download dir
-	incomingDir string
-	friendsDir  string
+	// usually ".friends" in the download dir.
+	friendsDir string
 
 	// The version is set by the build command.
 	version string
@@ -52,11 +59,19 @@ var (
 	reverseProxyAuthIP     string
 	reverseProxyAuthHeader string
 
+	//show version
+	showVersion bool
+
+	// debug logging
 	debug bool
 
 	// feed secret
-	feedSecret *Secret
-	authSecret *Secret
+	feedsecret *Secret
+	authsecret *Secret
+
+	// set based on httpAddr
+	httpIP   string
+	httpPort string
 
 	// transcoder
 	tcer *transcoder.Transcoder
@@ -64,18 +79,65 @@ var (
 	// downloader
 	dler *downloader.Downloader
 
+	// logger
+	logger  *zap.SugaredLogger
+	logtail *logtailer
+
 	httpReadLimit int64 = 2 * (1024 * 1024) // 2 MB
+
+	// config
+	config *Config
 )
+
+func NewLogtailer(size int64) (*logtailer, error) {
+	buf, err := circbuf.NewBuffer(size)
+	if err != nil {
+		return nil, err
+	}
+	return &logtailer{tail: buf}, nil
+}
+
+type logtailer struct {
+	sync.RWMutex
+
+	tail *circbuf.Buffer
+}
+
+func (l *logtailer) Lines() []string {
+	l.RLock()
+	buf := l.tail.Bytes()
+	l.RUnlock()
+
+	s := string(buf)
+	start := 0
+	if nl := strings.Index(s, "\n"); nl != -1 {
+		start = nl + len("\n")
+	}
+	return strings.Split(s[start:], "\n")
+}
+
+func (l *logtailer) Write(buf []byte) (int, error) {
+	l.Lock()
+	n, err := l.tail.Write(buf)
+	l.Unlock()
+	return n, err
+}
+
+func (l *logtailer) Sync() error {
+	return nil
+}
 
 func init() {
 	cli.StringVar(&downloadDir, "download-dir", "/data", "download directory")
 	cli.StringVar(&backlink, "backlink", "", "backlink (optional)")
 	cli.StringVar(&httpAddr, "http-addr", ":80", "listen address")
 	cli.StringVar(&httpHost, "http-host", "", "HTTP host")
-	cli.StringVar(&httpPrefix, "http-prefix", "/trickle", "HTTP URL prefix (not supported yet)")
+	cli.StringVar(&httpPrefix, "http-prefix", "/watcher", "HTTP URL prefix (not supported yet)")
+	cli.StringVar(&httpUsername, "http-username", "watcher", "HTTP basic auth username")
 	cli.StringVar(&torrentListenAddr, "torrent-addr", ":61337", "listen address for torrent client")
 	cli.StringVar(&reverseProxyAuthIP, "reverse-proxy-ip", "", "reverse proxy auth IP")
 	cli.StringVar(&reverseProxyAuthHeader, "reverse-proxy-header", "X-Authenticated-User", "reverse proxy auth header")
+	cli.BoolVar(&showVersion, "version", false, "display version and exit")
 	cli.BoolVar(&metadata, "metadata", false, "use metadata service")
 	cli.BoolVar(&letsencrypt, "letsencrypt", false, "enable TLS using Let's Encrypt")
 	cli.BoolVar(&debug, "debug", false, "debug mode")
@@ -83,14 +145,22 @@ func init() {
 
 // Index redirect
 func index(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	redirect(w, r, "/")
+	Redirect(w, r, "/")
+}
+
+func logs(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	for _, line := range logtail.Lines() {
+		fmt.Fprintf(w, "%s\n", line)
+	}
 }
 
 //
 // Downloads
 //
-func downloads(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	transfers := ListTransfers()
+func library(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	res := NewResponse(r, ps)
+	query := strings.ToLower(strings.TrimSpace(r.FormValue("q")))
 
 	dls, err := ListDownloads()
 	if err != nil {
@@ -98,10 +168,28 @@ func downloads(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		return
 	}
 
-	res := NewResponse(r, ps)
-	res.Transfers = transfers
-	res.Downloads = dls
-	res.Section = "downloads"
+	// Top 4 recent
+	recent := make([]Download, len(dls))
+	copy(recent, dls)
+	sort.Slice(recent, func(i, j int) bool { return recent[i].Created.After(recent[j].Created) })
+	res.Downloads = make([]Download, 4)
+	copy(res.Downloads, recent)
+
+	// Filter library
+	if query != "" {
+		for _, dl := range dls {
+			text := strings.ToLower(dl.ID)
+			if !strings.Contains(text, strings.ToLower(query)) {
+				continue
+			}
+			res.Library = append(res.Library, dl)
+		}
+	} else {
+		res.Library = dls
+	}
+
+	res.Query = query
+	res.Section = "library"
 	HTML(w, "index.html", res)
 }
 
@@ -125,7 +213,7 @@ func dlFiles(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
 	res := NewResponse(r, ps)
 	res.Download = dl
-	res.Section = "downloads"
+	res.Section = "files"
 	HTML(w, "downloads/files.html", res)
 }
 
@@ -145,6 +233,7 @@ func dlView(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	res := NewResponse(r, ps)
 	res.Download = dl
 	res.File = file
+	res.Section = "view"
 	HTML(w, "downloads/view.html", res)
 }
 
@@ -161,8 +250,6 @@ func dlSave(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	}
 
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filepath.Base(file.Path)))
-
-	log.Debugf("%s %s %q (%s)", r.RemoteAddr, ps.ByName("user"), r.Method, r.URL.Path, file.Path)
 	http.ServeFile(w, r, file.Path)
 }
 
@@ -178,7 +265,8 @@ func dlStream(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		http.NotFound(w, r)
 		return
 	}
-	log.Debugf("%s %s %q (%s)", r.RemoteAddr, ps.ByName("user"), r.Method, r.URL.Path, file.Path)
+	w.Header().Set("Vary", "Accept-Encoding")
+	w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", 7*86400))
 	http.ServeFile(w, r, file.Path)
 }
 
@@ -192,7 +280,7 @@ func dlRemove(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		Error(w, err)
 		return
 	}
-	redirect(w, r, "/?message=downloadremoved")
+	Redirect(w, r, "/?message=downloadremoved")
 }
 
 func dlShare(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
@@ -234,6 +322,14 @@ func transferList(w http.ResponseWriter, r *http.Request, ps httprouter.Params) 
 	HTML(w, "transfers/list.html", res)
 }
 
+func transferMagnet(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	if err := StartTransfer(r.FormValue("target")); err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, `{ status: "success" }`)
+}
+
 func transferStart(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	target := strings.TrimSpace(r.FormValue("target"))
 	if target == "" {
@@ -243,7 +339,7 @@ func transferStart(w http.ResponseWriter, r *http.Request, ps httprouter.Params)
 		Error(w, err)
 		return
 	}
-	redirect(w, r, "/?message=transferstarted")
+	Redirect(w, r, "/import")
 }
 
 func transferCancel(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
@@ -251,7 +347,7 @@ func transferCancel(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 		Error(w, err)
 		return
 	}
-	redirect(w, r, "/?message=transfercanceled")
+	Redirect(w, r, "/import")
 }
 
 //
@@ -271,13 +367,12 @@ func transcodeStart(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 		return
 	}
 
-	log.Debugf("starting trancode %q", file.Path)
-
+	logger.Debugf("starting trancode %q", file.Path)
 	if err := StartTranscode(file.Path); err != nil {
 		Error(w, err)
 		return
 	}
-	redirect(w, r, "/downloads/files/%s", dl.ID)
+	Redirect(w, r, "/downloads/files/%s", dl.ID)
 }
 
 func transcodeCancel(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
@@ -293,13 +388,13 @@ func transcodeCancel(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 		return
 	}
 
-	log.Debugf("canceling trancode %q", file.Path)
+	logger.Debugf("canceling trancode %q", file.Path)
 
 	if err := CancelTranscode(file.Path); err != nil {
 		Error(w, err)
 		return
 	}
-	redirect(w, r, "/downloads/files/%s", dl.ID)
+	Redirect(w, r, "/downloads/files/%s", dl.ID)
 }
 
 //
@@ -329,7 +424,7 @@ func friendAdd(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	}
 
 	if !validFriendHost.MatchString(host) {
-		redirect(w, r, "/friends?message=friendinvalidhost")
+		Redirect(w, r, "/friends?message=friendinvalidhost")
 		return
 	}
 
@@ -337,7 +432,7 @@ func friendAdd(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		Error(w, err)
 		return
 	}
-	redirect(w, r, "/friends?message=friendadded")
+	Redirect(w, r, "/friends?message=friendadded")
 }
 
 func friendRemove(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
@@ -350,7 +445,7 @@ func friendRemove(w http.ResponseWriter, r *http.Request, ps httprouter.Params) 
 		Error(w, err)
 		return
 	}
-	redirect(w, r, "/friends?message=friendremoved")
+	Redirect(w, r, "/friends?message=friendremoved")
 }
 
 func friendDownload(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
@@ -363,14 +458,85 @@ func friendDownload(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 		return
 	}
 
-	endpoint := fmt.Sprintf("https://%s/trickle/v1/downloads/files/%s?friend=%s", f.ID, dl, httpHost)
+	endpoint := &url.URL{
+		Scheme:   "https",
+		Host:     f.ID,
+		Path:     "/watcher/v1/downloads/files/" + dl,
+		RawQuery: "friend=" + httpHost,
+	}
 
-	if err := StartTransfer(endpoint); err != nil {
+	if err := StartTransfer(endpoint.String()); err != nil {
 		Error(w, err)
 		return
 	}
 
-	redirect(w, r, "/?message=transferstarted")
+	Redirect(w, r, "/?message=transferstarted")
+}
+
+//
+// Settings
+//
+
+func settings(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	if r.Method == "GET" {
+		res := NewResponse(r, ps)
+		res.Section = "settings"
+		HTML(w, "settings.html", res)
+		return
+	}
+
+	ratio := strings.TrimSpace(r.FormValue("ratio"))
+
+	n, err := strconv.ParseFloat(ratio, 64)
+	if err == nil {
+		if err := config.SetRatio(n); err != nil {
+			Error(w, err)
+			return
+		}
+		dler.Config.SetTorrentRatio(n)
+	}
+
+	Redirect(w, r, "/settings?message=settingssaved")
+}
+
+//
+// Search
+//
+
+func importHandler(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	res := NewResponse(r, ps)
+
+	query := strings.TrimSpace(r.FormValue("q"))
+	if query != "" {
+		// Add URL
+		if strings.HasPrefix(query, "http") || strings.HasPrefix(query, "magnet") {
+			if err := StartTransfer(query); err != nil {
+				Error(w, err)
+				return
+			}
+		}
+
+		// Search query
+		results, err := search.Search(query)
+		if err != nil {
+			Error(w, err)
+			return
+		}
+		// Truncate to 20 results max.
+		if len(results) > 20 {
+			results = results[0:19]
+		}
+
+		res.Results = results
+		res.Query = query
+		res.Results = results
+	}
+
+	transfers := ListTransfers()
+
+	res.Transfers = transfers
+	res.Section = "import"
+	HTML(w, "import.html", res)
 }
 
 //
@@ -379,8 +545,8 @@ func friendDownload(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 
 func feedPodcast(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	secret := ps.ByName("secret")
-	if secret != feedSecret.Get() {
-		log.Errorf("auth: feed invalid secret")
+	if secret != feedsecret.Get() {
+		logger.Errorf("auth: feed podcast invalid secret %q", secret)
 		http.NotFound(w, r)
 		return
 	}
@@ -391,9 +557,10 @@ func feedPodcast(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		return
 	}
 
+	// Find the most recently updated file.
 	var updated time.Time
 	for _, dl := range dls {
-		for _, file := range dl.Files() {
+		for _, file := range dl.Files(false) {
 			if !file.Viewable() {
 				continue
 			}
@@ -404,19 +571,30 @@ func feedPodcast(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		}
 	}
 
-	p := podcast.New("Trickle @ "+httpHost, "https://"+httpHost, "Trickle "+httpHost, &updated, &updated)
-	p.AddAuthor(httpHost, "trickle@"+httpHost)
-	p.AddImage("https://trickle.cloud/static/logo.png") // TODO: serve this directly.
+	baseurl := BaseURL(r)
+	title := "Watcher - " + httpHost
+
+	p := podcast.New(title, baseurl, title, &updated, &updated)
+	p.AddAuthor(httpHost, "watcher@"+httpHost)
+	p.AddImage(baseurl + "/logo.png")
 
 	for _, dl := range dls {
-		for _, file := range dl.Files() {
+		// Find viewable files
+		var files []File
+		for _, file := range dl.Files(false) {
 			if !file.Viewable() {
 				continue
 			}
+			files = append(files, file)
+		}
 
+		// Add each file as podcast item.
+		for _, file := range files {
 			typ := podcast.MP4
 			switch file.Ext() {
 			case "mp4":
+				typ = podcast.MP4
+			case "m4a":
 				typ = podcast.MP4
 			case "m4v":
 				typ = podcast.M4V
@@ -426,22 +604,40 @@ func feedPodcast(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 				continue
 			}
 
-			pubDate := file.Info.ModTime()
-			stream := fmt.Sprintf("https://%s/trickle/feed/stream/%s/%s?secret=%s", httpHost, dl.ID, file.ID, feedSecret.Get())
+			pubDate := dl.Created
+			stream, err := url.Parse(fmt.Sprintf("%s/feed/stream/%s/%s?secret=%s", baseurl, dl.ID, file.ID, feedsecret.Get()))
+			if err != nil {
+				Error(w, err)
+				return
+			}
+
 			size := file.Info.Size()
 
+			itemTitle := filepath.Base(file.ID)
+			if len(files) == 1 {
+				itemTitle = dl.ID
+			}
+			itemDesc := dl.ID
+
 			item := podcast.Item{
-				Title:       fmt.Sprintf("%s (%s)", file.ID, dl.ID),
-				Description: fmt.Sprintf("%s (%s)", file.ID, dl.ID),
+				Title:       itemTitle,
+				Description: itemDesc,
 				PubDate:     &pubDate,
 			}
-			item.AddEnclosure(stream, typ, size)
+			if file.Thumbnail() {
+				item.AddImage(fmt.Sprintf("%s/feed/stream/%s/%s.thumbnail.png?secret=%s", baseurl, dl.ID, file.ID, feedsecret.Get()))
+			}
+			item.AddEnclosure(stream.String(), typ, size)
 			if _, err := p.AddItem(item); err != nil {
 				Error(w, err)
 				return
 			}
 		}
 	}
+
+	// Sort
+	sort.Slice(p.Items, func(i, j int) bool { return p.Items[i].PubDate.After(*p.Items[j].PubDate) })
+
 	w.Header().Set("Content-Type", "application/xml")
 	if err := p.Encode(w); err != nil {
 		Error(w, err)
@@ -449,33 +645,40 @@ func feedPodcast(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 }
 
 func feedReset(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	if err := feedSecret.Reset(); err != nil {
+	if err := feedsecret.Reset(); err != nil {
 		Error(w, err)
 		return
 	}
-	redirect(w, r, "/?message=feedsecretreset")
+	Redirect(w, r, "/?message=feedsecretreset")
 }
 
 func feedStream(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	secret := r.FormValue("secret")
-	if secret != feedSecret.Get() {
-		log.Errorf("auth: feed invalid secret")
+	id := ps.ByName("id")
+	filename := strings.TrimPrefix(ps.ByName("file"), "/")
+
+	if secret != feedsecret.Get() {
+		logger.Errorf("auth: feed stream invalid secret %q", secret)
 		http.NotFound(w, r)
 		return
 	}
 
-	dl, err := FindDownload(ps.ByName("id"))
+	dl, err := FindDownload(id)
 	if err != nil {
+		logger.Warnf("feed stream download %q: %s", id, err)
 		http.NotFound(w, r)
 		return
 	}
 
-	file, err := dl.FindFile(strings.TrimPrefix(ps.ByName("file"), "/"))
+	file, err := dl.FindFile(filename)
 	if err != nil {
+		logger.Warnf("feed stream file %q: %s", filename, err)
 		http.NotFound(w, r)
 		return
 	}
-	log.Debugf("feed stream: %s", r.URL)
+
+	w.Header().Set("Vary", "Accept-Encoding")
+	w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", 7*86400))
 	http.ServeFile(w, r, file.Path)
 }
 
@@ -501,7 +704,7 @@ func v1Status(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		return "idle"
 	}()
 
-	w.Header().Set("Content-Type", "text/plain")
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	fmt.Fprintf(w, "%s\n", status)
 }
 
@@ -540,7 +743,7 @@ func v1Files(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	}
 
 	var files []FriendFile
-	for _, f := range dl.Files() {
+	for _, f := range dl.Files(false) {
 		files = append(files, FriendFile{
 			ID:   f.ID,
 			Size: f.Info.Size(),
@@ -566,7 +769,7 @@ func v1Stream(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		http.NotFound(w, r)
 		return
 	}
-	log.Debugf("%s %s %q %q %q", r.RemoteAddr, ps.ByName("user"), r.Method, r.URL.Path, file.Path)
+	logger.Debugf("%s %s %q %q %q", r.RemoteAddr, ps.ByName("user"), r.Method, r.URL.Path, file.Path)
 	http.ServeFile(w, r, file.Path)
 }
 
@@ -575,7 +778,16 @@ func v1Stream(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 //
 
 func staticAsset(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	path := "static" + ps.ByName("path")
+	serveAsset(w, r, ps.ByName("path"))
+}
+
+func logo(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	serveAsset(w, r, "/logo.png")
+}
+
+func serveAsset(w http.ResponseWriter, r *http.Request, filename string) {
+	path := "static" + filename
+
 	b, err := Asset(path)
 	if err != nil {
 		http.NotFound(w, r)
@@ -593,13 +805,13 @@ func staticAsset(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 // Helpers
 //
 
-func redirect(w http.ResponseWriter, r *http.Request, format string, a ...interface{}) {
+func Redirect(w http.ResponseWriter, r *http.Request, format string, a ...interface{}) {
 	location := httpPrefix
 	location += fmt.Sprintf(format, a...)
 	http.Redirect(w, r, location, http.StatusFound)
 }
 
-func prefix(path string) string {
+func Prefix(path string) string {
 	return httpPrefix + path
 }
 
@@ -609,9 +821,7 @@ func prefix(path string) string {
 
 func main() {
 	var err error
-
 	cli.Parse(os.Args[1:])
-
 	usage := func(msg string) {
 		if msg != "" {
 			fmt.Fprintf(os.Stderr, "ERROR: %s\n", msg)
@@ -620,10 +830,39 @@ func main() {
 		cli.PrintDefaults()
 	}
 
-	if debug {
-		log.SetLevel(log.DebugLevel)
+	if showVersion {
+		fmt.Printf("Watcher %s\n", version)
+		os.Exit(0)
 	}
-	log.Debugf("debug logging is enabled")
+
+	logtail, err = NewLogtailer(200 * 1024)
+	if err != nil {
+		panic(err)
+	}
+
+	// logger
+	atomlevel := zap.NewAtomicLevel()
+	l := zap.New(
+		zapcore.NewCore(
+			zapcore.NewConsoleEncoder(zap.NewProductionEncoderConfig()),
+			zapcore.NewMultiWriteSyncer(zapcore.Lock(zapcore.AddSync(os.Stdout)), logtail),
+			atomlevel,
+		),
+	)
+	defer l.Sync()
+	logger = l.Sugar()
+
+	// debug logging
+	if debug {
+		atomlevel.SetLevel(zap.DebugLevel)
+	}
+	logger.Debugf("debug logging is enabled")
+
+	// config
+	config, err = NewConfig("config.json")
+	if err != nil {
+		logger.Fatal(err)
+	}
 
 	if httpHost == "" {
 		usage("missing HTTP host")
@@ -634,38 +873,48 @@ func main() {
 	httpPrefix = strings.TrimRight(httpPrefix, "/")
 
 	// feed secret
-	feedSecret = NewSecret(filepath.Join(downloadDir, ".feedsecret"))
+	feedsecret = NewSecret(filepath.Join(downloadDir, ".feedsecret"))
+
+	// http port
+	httpIP, httpPort, err := net.SplitHostPort(httpAddr)
+	if err != nil {
+		usage("invalid --http-addr: " + err.Error())
+	}
 
 	// auth secret
-	if reverseProxyAuthIP == "" || letsencrypt {
-		authSecret = NewSecret(filepath.Join(downloadDir, ".authsecret"))
+	if reverseProxyAuthIP == "" {
+		authsecret = NewSecret(filepath.Join(downloadDir, ".password"))
 	}
 
 	// transcoder
 	tcer = transcoder.NewTranscoder()
 
 	// downloader
-	incomingDir = filepath.Join(downloadDir, ".incoming")
-	log.Debugf("download directory is %q", downloadDir)
-	log.Debugf("incoming directory is %q", incomingDir)
+	logger.Debugf("download directory is %q", downloadDir)
 
-	dler, err = downloader.NewDownloader(downloadDir, incomingDir, torrentListenAddr, func() int64 {
-		di, err := NewDiskInfo(downloadDir)
-		if err != nil {
-			log.Fatal(err)
-		}
-		return di.Free()
+	dler, err = downloader.NewDownloader(&downloader.Config{
+		DownloadDir: downloadDir,
+		TorrentAddr: torrentListenAddr,
+		Logger:      logger,
+		Space: func() int64 {
+			di, err := NewDiskInfo(downloadDir)
+			if err != nil {
+				logger.Fatal(err)
+			}
+			return di.Free()
+		},
+		TorrentRatio: config.Get().Ratio,
 	})
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 
 	// friends dir
 	if !metadata {
 		friendsDir = filepath.Join(downloadDir, ".friends")
-		log.Debugf("friends directory is %q", friendsDir)
+		logger.Debugf("friends directory is %q", friendsDir)
 		if err := os.MkdirAll(friendsDir, 0755); err != nil {
-			log.Fatal(err)
+			logger.Fatal(err)
 		}
 	}
 
@@ -680,7 +929,7 @@ func main() {
 	//r.HandleOPTIONS = false
 	/*
 		r.PanicHandler = func(w http.ResponseWriter, r *http.Request, recv interface{}) {
-			log.Errorf("DON'T PANIC: %s %s", recv, rtdebug.Stack())
+			logger.Errorf("DON'T PANIC: %s %s", recv, rtdebug.Stack())
 			Error(w, fmt.Errorf("Internal Server Error"))
 			return
 		}
@@ -688,45 +937,55 @@ func main() {
 
 	// Downloads
 	r.GET("/", Log(Auth(index, false)))
-	r.GET(prefix(""), Log(Auth(index, false)))
-	r.GET(prefix("/"), Log(Auth(downloads, false)))
-	r.GET(prefix("/downloads/list"), Auth(dlList, false))
-	r.GET(prefix("/downloads/files/:id"), Log(Auth(dlFiles, false)))
-	r.GET(prefix("/downloads/view/:id/*file"), Log(Auth(dlView, false)))
-	r.GET(prefix("/downloads/save/:id/*file"), Log(Auth(dlSave, false)))
-	r.GET(prefix("/downloads/stream/:id/*file"), Log(Auth(dlStream, false)))
-	r.GET(prefix("/downloads/remove/:id"), Log(Auth(dlRemove, false)))
-	r.POST(prefix("/downloads/share/:id"), Log(Auth(dlShare, false)))
-	r.POST(prefix("/downloads/unshare/:id"), Log(Auth(dlUnshare, false)))
+	r.GET(Prefix(""), Log(Auth(index, false)))
+	r.GET(Prefix("/"), Log(Auth(library, false)))
+	r.GET(Prefix("/logs"), Auth(logs, false))
+	r.GET(Prefix("/downloads/list"), Auth(dlList, false))
+	r.GET(Prefix("/downloads/files/:id"), Log(Auth(dlFiles, false)))
+	r.GET(Prefix("/downloads/view/:id/*file"), Log(Auth(dlView, false)))
+	r.GET(Prefix("/downloads/save/:id/*file"), Log(Auth(dlSave, false)))
+	r.GET(Prefix("/downloads/stream/:id/*file"), Log(Auth(dlStream, false)))
+	r.GET(Prefix("/downloads/remove/:id"), Log(Auth(dlRemove, false)))
+	r.POST(Prefix("/downloads/share/:id"), Log(Auth(dlShare, false)))
+	r.POST(Prefix("/downloads/unshare/:id"), Log(Auth(dlUnshare, false)))
 
 	// Transfers
-	r.GET(prefix("/transfers/list"), Auth(transferList, false))
-	r.GET(prefix("/transfers/cancel/:id"), Log(Auth(transferCancel, false)))
-	r.POST(prefix("/transfers/start"), Log(Auth(transferStart, false)))
+	r.GET(Prefix("/transfers/list"), Auth(transferList, false))
+	r.GET(Prefix("/transfers/cancel/:id"), Log(Auth(transferCancel, false)))
+	r.POST(Prefix("/transfers/start"), Log(Auth(transferStart, false)))
+	r.POST(Prefix("/transfers/magnet"), Log(Auth(transferMagnet, false)))
 
 	// Transcodings
-	r.GET(prefix("/transcode/start/:id/*file"), Log(Auth(transcodeStart, false)))
-	r.GET(prefix("/transcode/cancel/:id/*file"), Log(Auth(transcodeCancel, false)))
+	r.GET(Prefix("/transcode/start/:id/*file"), Log(Auth(transcodeStart, false)))
+	r.GET(Prefix("/transcode/cancel/:id/*file"), Log(Auth(transcodeCancel, false)))
 
 	// Friends
-	r.GET(prefix("/friends"), Log(Auth(friends, true)))
-	r.POST(prefix("/friends/add"), Log(Auth(friendAdd, true)))
-	r.GET(prefix("/friends/remove/:host"), Log(Auth(friendRemove, true)))
-	r.POST(prefix("/friends/download/:host/:dl"), Log(Auth(friendDownload, true)))
+	r.GET(Prefix("/friends"), Log(Auth(friends, true)))
+	r.POST(Prefix("/friends/add"), Log(Auth(friendAdd, true)))
+	r.GET(Prefix("/friends/remove/:host"), Log(Auth(friendRemove, true)))
+	r.POST(Prefix("/friends/download/:host/:dl"), Log(Auth(friendDownload, true)))
 
 	// Feed
-	r.GET(prefix("/podcast/:secret"), Log(feedPodcast))
-	r.GET(prefix("/feed/stream/:id/*file"), Log(feedStream))
-	r.GET(prefix("/feed/reset"), Log(Auth(feedReset, false)))
+	r.GET(Prefix("/podcast/:secret"), Log(feedPodcast))
+	r.GET(Prefix("/feed/stream/:id/*file"), Log(feedStream))
+	r.GET(Prefix("/feed/reset"), Log(Auth(feedReset, false)))
+
+	// Settings
+	r.GET(Prefix("/settings"), Log(Auth(settings, false)))
+	r.POST(Prefix("/settings"), Log(Auth(settings, false)))
+
+	// Import
+	r.GET(Prefix("/import"), Log(Auth(importHandler, false)))
 
 	// API v1
-	r.GET(prefix("/v1/status"), Log(v1Status))
-	r.GET(prefix("/v1/downloads"), Log(Auth(v1Downloads, true)))
-	r.GET(prefix("/v1/downloads/files/:id"), Log(Auth(v1Files, true)))
-	r.GET(prefix("/v1/downloads/stream/:id/*file"), Log(Auth(v1Stream, true)))
+	r.GET(Prefix("/v1/status"), Log(v1Status))
+	r.GET(Prefix("/v1/downloads"), Log(Auth(v1Downloads, true)))
+	r.GET(Prefix("/v1/downloads/files/:id"), Log(Auth(v1Files, true)))
+	r.GET(Prefix("/v1/downloads/stream/:id/*file"), Log(Auth(v1Stream, true)))
 
 	// Assets
-	r.GET(prefix("/static/*path"), Auth(staticAsset, false))
+	r.GET(Prefix("/static/*path"), Auth(staticAsset, false))
+	r.GET(Prefix("/logo.png"), logo)
 
 	//
 	// Server
@@ -736,16 +995,26 @@ func main() {
 
 	// Plain text web server for use behind a reverse proxy.
 	if !letsencrypt {
-		p80 := &http.Server{
+		httpd := &http.Server{
 			Handler:        r,
-			Addr:           httpAddr,
+			Addr:           net.JoinHostPort(httpIP, httpPort),
 			WriteTimeout:   httpTimeout,
 			ReadTimeout:    httpTimeout,
 			MaxHeaderBytes: maxHeaderBytes,
 		}
-		log.Fatal(p80.ListenAndServe())
-		log.Infof("http server %s http://%s%s", p80.Addr, httpHost, httpPrefix)
-		return
+		hostport := net.JoinHostPort(httpHost, httpPort)
+		if httpPort == "80" {
+			hostport = httpHost
+		}
+		logger.Infof("Watcher version: %s %s", version, &url.URL{
+			Scheme: "http",
+			Host:   hostport,
+			Path:   httpPrefix + "/",
+		})
+		if authsecret != nil {
+			logger.Infof("Login credentials:  %s  /  %s", httpUsername, authsecret.Get())
+		}
+		logger.Fatal(httpd.ListenAndServe())
 	}
 
 	// Let's Encrypt TLS mode
@@ -753,21 +1022,21 @@ func main() {
 	// http redirect to https
 	go func() {
 		redir := httprouter.New()
-		redir.GET("/", func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+		redir.GET("/*path", func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 			r.URL.Scheme = "https"
-			r.URL.Host = httpHost
+			r.URL.Host = net.JoinHostPort(httpHost, httpPort)
 			http.Redirect(w, r, r.URL.String(), http.StatusFound)
 		})
 
-		p80 := &http.Server{
+		httpd := &http.Server{
 			Handler:        redir,
-			Addr:           ":80",
+			Addr:           net.JoinHostPort(httpIP, "80"),
 			WriteTimeout:   httpTimeout,
 			ReadTimeout:    httpTimeout,
 			MaxHeaderBytes: maxHeaderBytes,
 		}
-		if err := p80.ListenAndServe(); err != nil {
-			log.Fatal(err)
+		if err := httpd.ListenAndServe(); err != nil {
+			logger.Warnf("skipping redirect http port 80 to https port %s (%s)", httpPort, err)
 		}
 	}()
 
@@ -797,11 +1066,12 @@ func main() {
 	}
 
 	// Override default for TLS.
-	if httpAddr == ":80" {
-		httpAddr = ":443"
+	if httpPort == "80" {
+		httpPort = "443"
+		httpAddr = net.JoinHostPort(httpIP, httpPort)
 	}
 
-	p443 := &http.Server{
+	httpsd := &http.Server{
 		Handler:        r,
 		Addr:           httpAddr,
 		WriteTimeout:   httpTimeout,
@@ -812,14 +1082,22 @@ func main() {
 	// Enable TCP keep alives on the TLS connection.
 	tcpListener, err := net.Listen("tcp", httpAddr)
 	if err != nil {
-		log.Fatalf("listen failed: %s", err)
+		logger.Fatalf("listen failed: %s", err)
 		return
 	}
 	tlsListener := tls.NewListener(tcpKeepAliveListener{tcpListener.(*net.TCPListener)}, &tlsConfig)
 
-	// TODO: display port if not on standard 443?
-	log.Infof("Trickle URL: https://%s:%s@%s%s", "trickle", authSecret.Get(), httpHost, httpPrefix)
-	log.Fatal(p443.Serve(tlsListener))
+	hostport := net.JoinHostPort(httpHost, httpPort)
+	if httpPort == "443" {
+		hostport = httpHost
+	}
+	logger.Infof("Watcher version: %s %s", version, &url.URL{
+		Scheme: "https",
+		Host:   hostport,
+		Path:   httpPrefix + "/",
+	})
+	logger.Infof("Login credentials:  %s  /  %s", httpUsername, authsecret.Get())
+	logger.Fatal(httpsd.Serve(tlsListener))
 }
 
 type tcpKeepAliveListener struct {

@@ -1,46 +1,52 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
     <head>
         <meta charset="utf-8" />
         <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
         <meta name="referrer" content="origin">
-        <link rel="icon" href="/trickle/static/logo.png">
-        <link rel="apple-touch-icon" href="/trickle/static/logo.png">
+        <link rel="icon" href="/watcher/static/logo.png">
+        <link rel="apple-touch-icon" href="/watcher/static/logo.png">
 
-        <title>Trickle</title>
+        <title>Watcher</title>
 
-        <link rel="stylesheet" type="text/css" href="/trickle/static/roboto.css">
-        <link rel="stylesheet" type="text/css" href="/trickle/static/semantic/semantic.min.css">
-        <link rel="stylesheet" type="text/css" href="/trickle/static/style.css">
+        <link rel="stylesheet" type="text/css" href="/watcher/static/roboto.css">
+        <link rel="stylesheet" type="text/css" href="/watcher/static/semantic/semantic.min.css">
+        <link rel="stylesheet" type="text/css" href="/watcher/static/style.css?updated=1245">
 
-        <script src="/trickle/static/jquery.min.js"></script>
-        <script src="/trickle/static/semantic/semantic.min.js"></script>
+        <script src="/watcher/static/jquery.min.js"></script>
+        <script src="/watcher/static/script.js"></script>
+        <script src="/watcher/static/semantic/semantic.min.js"></script>
     </head>
     <body>
 
         {{if ne $.Section "nonav"}}
         <div class="navmenu ui small inverted menu">
             {{if $.Backlink}}
-            <a class="item" href="{{.Backlink}}">
-                <i class="chevron left icon"></i>
-            </a>
+                {{if eq $.Section "files" "friends" "import" "view"}}
+                    <a class="item" onclick="window.history.go(-1); return false;"><i class="chevron left icon"></i></a>
+                {{else}}
+                    <a class="item" href="{{.Backlink}}"><i class="chevron left icon"></i></a>
+                {{end}}
             {{end}}
-            <a class="item" href="/trickle/">
-                <img src="/trickle/static/logo.png">
+            <a class="item" href="/watcher/">
+                <img src="/watcher/static/logo.png">
             </a>
             
-            <a href="/trickle/" class="{{if eq $.Section "downloads"}}active{{end}} item">
-                <i class="cloud download icon"></i>Downloads
+            <a href="/watcher/" class="{{if eq $.Section "library" "files"}}active{{end}} item">
+				Library
             </a>
-            <a href="/trickle/friends" class="{{if eq $.Section "friends"}}active{{end}} item">
-                <i class="users icon"></i>Friends
+            <a href="/watcher/import" class="{{if eq $.Section "import"}}active{{end}} item">
+				Import
+            </a>
+            <a href="/watcher/friends" class="{{if eq $.Section "friends"}}active{{end}} item">
+				Friends
             </a>
 
             <div class="right menu">
-                <div class="item">
-                    &nbsp;
-                </div>
+                <a href="/watcher/settings" class="{{if eq $.Section "settings"}}active{{end}} item">
+					<i class="setting icon"></i>
+                </a>
             </div>
         </div>
         {{end}}
@@ -49,44 +55,49 @@
             <div class="ui container">
                 <div class="ui positive message">
                     {{if eq $message "feedsecretreset"}}
-                        <a href="/trickle/"><i class="close icon"></i></a>
+                        <a href="/watcher/"><i class="close icon"></i></a>
                         <div class="header">
                             Success: feed secret reset 
                         </div>
                     {{else if eq $message "transferstarted"}}
-                        <a href="/trickle/"><i class="close icon"></i></a>
+                        <a href="/watcher/"><i class="close icon"></i></a>
                         <div class="header">
                             Success: transfer started
                         </div>
                     {{else if eq $message "transfercanceled"}}
-                        <a href="/trickle/"><i class="close icon"></i></a>
+                        <a href="/watcher/"><i class="close icon"></i></a>
                         <div class="header">
                             Success: transfer canceled
                         </div>
                     {{else if eq $message "downloadremoved"}}
-                        <a href="/trickle/"><i class="close icon"></i></a>
+                        <a href="/watcher/"><i class="close icon"></i></a>
                         <div class="header">
                             Success: download deleted
                         </div>
                     {{else if eq $message "friendstarted"}}
-                        <a href="/trickle/friends"><i class="close icon"></i></a>
+                        <a href="/watcher/friends"><i class="close icon"></i></a>
                         <div class="header">
                             Success: friend download started
                         </div>
                     {{else if eq $message "friendinvalidhost"}}
-                        <a href="/trickle/friends"><i class="close icon"></i></a>
+                        <a href="/watcher/friends"><i class="close icon"></i></a>
                         <div class="header">
                             Error: invalid friend host
                         </div>
                     {{else if eq $message "friendadded"}}
-                        <a href="/trickle/friends"><i class="close icon"></i></a>
+                        <a href="/watcher/friends"><i class="close icon"></i></a>
                         <div class="header">
                             Success: friend added
                         </div>
                     {{else if eq $message "friendremoved"}}
-                        <a href="/trickle/friends"><i class="close icon"></i></a>
+                        <a href="/watcher/friends"><i class="close icon"></i></a>
                         <div class="header">
                             Success: friend deleted
+                        </div>
+                    {{else if eq $message "settingssaved"}}
+                        <a href="/watcher/"><i class="close icon"></i></a>
+                        <div class="header">
+                            Success: settings saved
                         </div>
                     {{end}}
                 </div>

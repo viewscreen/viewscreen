@@ -1,0 +1,67 @@
+{{template "header.html" .}}
+
+<div class="ui container">
+
+    <form class="ui large form" method="GET" action="/watcher/import">
+        <div class="field">
+            <div class="ui action input">
+				<input type="text" name="q" placeholder="Enter a search query or torrent link" {{if not $.Results}}autofocus="autofocus"{{end}} autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+                <button type="submit" class="ui primary button">Search</button>
+            </div>
+        </div>
+    </form>
+
+    <div class="ui hidden divider"></div>
+
+	{{if $.Query}}
+        <div class="ui hidden divider"></div>
+        <a href="/watcher/import" class="ui label">{{$.Query}} <i class="delete icon"></i></a>
+
+
+        {{if $.Results}}
+            <table class="ui single line fixed selectable striped unstackable table">
+                <tbody>
+                {{range $result := $.Results}}
+                    {{$dlexists := dlexists $result.Title}}
+                    <tr>
+                        <td class="ten wide">
+                            {{$result.Title}}
+                        </td>
+                        <td class="right aligned four wide">
+                            {{bytes $result.Size}}
+                        </td>
+                        <td class="right aligned two wide">
+                            <button class="{{if not $dlexists}}hide{{end}} toggler ui mini icon button" disabled><i class="cloud download icon"></i></button>
+                            <button class="{{if $dlexists }}hide{{end}} toggler ui mini icon button" data-action="/watcher/transfers/magnet" data-key="target" data-value="{{$result.Magnet}}"><i class="cloud download icon"></i></a>
+                        </td>
+                    </tr>
+                {{end}}
+                </tbody>
+            </table>
+        {{else}}
+            <div class="ui center aligned clearing segment">
+                <div class="ui hidden divider"></div>
+                <h4 class="ui center aligned grey header">
+                    No results for &quot;{{.Query}}&quot;
+                </h4>
+                <div class="ui hidden divider"></div>
+            </div>
+        {{end}}
+    {{end}}
+
+	<div class="ui hidden divider"></div>
+
+    <div id="transfers">
+        {{template "transfers/list.html" .}}
+    </div>
+</div>
+
+<script>
+    $(document).ready(function() {
+        // Transfers should be polled immediately.
+        poller('#transfers', '/watcher/transfers/list', 2000);
+    });
+</script>
+
+{{template "footer.html" .}}
+

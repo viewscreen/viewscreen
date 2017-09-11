@@ -172,14 +172,21 @@ func (t *Transcoder) Add(srcname string) error {
 func (t *Transcoder) transcode(srcname string) {
 	srcname, tmpname, dstname := t.filenames(srcname)
 
-	ffmpeg, err := exec.LookPath("ffmpeg")
+	srcfi, err := os.Stat(srcname)
 	if err != nil {
-		log.Errorf("ffmpeg not found in path")
+		log.Errorf("job %q: %s", srcname, err)
 		return
 	}
 
-	cmd := exec.Command(ffmpeg,
-		"-y", // overwrite
+	// Find ffmpeg
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		log.Error(err)
+		return
+	}
+
+	cmd, err := exec.Command(ffmpeg,
+		"-y",
 		"-i", srcname,
 		"-codec:v", "libx264",
 		"-crf", "25",
@@ -193,7 +200,11 @@ func (t *Transcoder) transcode(srcname string) {
 		"-movflags", "faststart", // make streaming work
 		"-max_muxing_queue_size", "500", // handle sparse audio/video frames (see: https://trac.ffmpeg.org/ticket/6375#comment:2)
 		tmpname,
-	)
+	), nil
+	if err != nil {
+		log.Errorf("ffmpeg failed: %s", err)
+		return
+	}
 
 	// Add as a running job.
 	log.Infof("adding transcode job %q -> %q", srcname, dstname)
@@ -211,31 +222,46 @@ func (t *Transcoder) transcode(srcname string) {
 		os.Remove(tmpname)
 	}()
 
-	// run the ffmpeg process.
+	// Transcode
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		log.Errorf("job %q: %s", srcname, string(output))
 		return
 	}
 
-	// rename temp file to real file.
+	// Rename temp file to real file.
 	if err := os.Rename(tmpname, dstname); err != nil {
 		log.Errorf("job %q: %s", srcname, err)
 		return
 	}
 
-	// check that our new file is non-zero.
-	fi, err := os.Stat(dstname)
+	// check that our new file is a reasonable size.
+	// TODO: ffprobe and check duration matches?
+	minsize := srcfi.Size() / 5
+	dstfi, err := os.Stat(dstname)
 	if err != nil {
 		log.Errorf("job %q: %s", srcname, err)
 		return
 	}
-	if fi.Size() == 0 {
-		log.Errorf("job %q: transcoded file is zero bytes!", srcname)
+	if dstfi.Size() < minsize {
+		log.Errorf("job %q: transcoded is too small (%d vs %d); deleting.", srcname, dstfi.Size(), minsize)
+		if err := os.Remove(dstname); err != nil {
+			log.Error(err)
+		}
 		return
 	}
 
-	// remove source
+	// Rename the old thumbnail if it exists.
+	oldthumb := srcname + ".thumbnail.png"
+	newthumb := dstname + ".thumbnail.png"
+	if _, err := os.Stat(oldthumb); err == nil {
+		if err := os.Rename(oldthumb, newthumb); err != nil {
+			log.Errorf("job %q: %s", srcname, err)
+			return
+		}
+	}
+
+	// Remove the source file.
 	if err := os.Remove(srcname); err != nil {
 		log.Errorf("job %q: %s", srcname, err)
 		return
