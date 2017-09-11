@@ -56,50 +56,29 @@ When enabled with the `--letsencrypt` flag, watcher runs a TLS ("SSL") https ser
 * Your server must have a publicly resolvable DNS record.
 * Your server must be reachable over the internet on ports 80 and 443.
 
-### 4. Run as a Docker container
 
-The official image is `watchercloud/watcher`, which should run in any up-to-date Docker environment.
-
-Follow the official Docker install instructions: [Get Docker CE for Ubuntu](https://docs.docker.com/engine/installation/linux/docker-ce/ubuntu/)
+### 4. Standalone
 
 ```bash
 
-# Your download directory should be bind-mounted as `/data` inside the container using the `--volume` flag.
-$ mkdir /home/<username>/Downloads
+# Install ffmpeg.
+$ sudo add-apt-repository -y ppa:jonathonf/ffmpeg-3
+$ sudo apt-get update
+$ sudo apt-get install -y wget ffmpeg x264
 
-$ sudo docker create                            \
-    --name watcher --init --restart always      \
-    --publish 80:80 --publish 443:443           \
-    --volume /home/<username>/Downloads:/data   \
-    watchercloud/watcher:latest --letsencrypt --http-host watcher.example.com
+# Download the watcher binary.
+$ sudo wget -O /usr/bin/watcher https://github.com/watchercloud/watcher/raw/master/watcher-linux-amd64
 
-$ sudo docker start watcher
+# Make it executable.
+$ sudo chmod +x /usr/bin/watcher
 
-$ sudo docker logs -f watcher
-time="2027-01-19T00:00:00Z" level=info msg="Watcher URL: https://watcher.example.com/watcher"
-time="2027-01-19T00:00:00Z" level=info msg="Login credentials: watcher / 924433342"
+# Allow it to bind to privileged ports 80 and 443.
+$ sudo setcap cap_net_bind_service=+ep /usr/bin/watcher
 
+# Enable Let's Encrypt using your domain for automatic TLS configuration.
+$ watcher --http-host watcher.example.com --http-username $USER --download-dir $HOME/Downloads --letsencrypt
 INFO[0000] Watcher URL: https://watcher.example.com/watcher
-INFO[0001] Login credentials: watcher / 398032092
-
-```
-
-### 5. Updating the container image
-
-Pull the latest image, remove the container, and re-create the container as explained above.
-
-```bash
-# Pull the latest image
-$ sudo docker pull watchercloud/watcher
-
-# Stop the container
-$ sudo docker stop watcher
-
-# Remove the container (data is stored on the mounted volume)
-$ sudo docker rm watcher
-
-# Re-create and start the container
-$ sudo docker create ... (see above)
+INFO[0001] Login credentials: <username> / <password>
 
 ```
 
@@ -142,34 +121,55 @@ Usage of watcher-linux-amd64:
   -version
     	display version and exit
 
-
 ```
 
+###  Run as a Docker container
 
-### Standalone
+The official image is `watchercloud/watcher`, which should run in any up-to-date Docker environment.
+
+Follow the official Docker install instructions: [Get Docker CE for Ubuntu](https://docs.docker.com/engine/installation/linux/docker-ce/ubuntu/)
 
 ```bash
 
-# Install ffmpeg.
-$ sudo add-apt-repository -y ppa:jonathonf/ffmpeg-3
-$ sudo apt-get update
-$ sudo apt-get install -y wget ffmpeg x264
+# Your download directory should be bind-mounted as `/data` inside the container using the `--volume` flag.
+$ mkdir /home/<username>/Downloads
 
-# Download the watcher binary.
-$ sudo wget -O /usr/bin/watcher https://github.com/watchercloud/watcher/raw/master/watcher-linux-amd64
+$ sudo docker create                            \
+    --name watcher --init --restart always      \
+    --publish 80:80 --publish 443:443           \
+    --volume /home/<username>/Downloads:/data   \
+    watchercloud/watcher:latest --letsencrypt --http-host watcher.example.com
 
-# Make it executable.
-$ sudo chmod +x /usr/bin/watcher
+$ sudo docker start watcher
 
-# Allow it to bind to privileged ports 80 and 443.
-$ sudo setcap cap_net_bind_service=+ep /usr/bin/watcher
+$ sudo docker logs -f watcher
+time="2027-01-19T00:00:00Z" level=info msg="Watcher URL: https://watcher.example.com/watcher"
+time="2027-01-19T00:00:00Z" level=info msg="Login credentials: watcher / 924433342"
 
-# Enable Let's Encrypt using your domain for automatic TLS configuration.
-$ watcher --http-host watcher.example.com --http-username $USER --download-dir $HOME/Downloads --letsencrypt
 INFO[0000] Watcher URL: https://watcher.example.com/watcher
-INFO[0001] Login credentials: <username> / <password>
+INFO[0001] Login credentials: watcher / 398032092
 
 ```
+
+#### Updating the container image
+
+Pull the latest image, remove the container, and re-create the container as explained above.
+
+```bash
+# Pull the latest image
+$ sudo docker pull watchercloud/watcher
+
+# Stop the container
+$ sudo docker stop watcher
+
+# Remove the container (data is stored on the mounted volume)
+$ sudo docker rm watcher
+
+# Re-create and start the container
+$ sudo docker create ... (see above)
+
+```
+
 
 #### Using screen to run in debug mode
 
