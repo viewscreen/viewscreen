@@ -6,32 +6,38 @@
 </style>
 
 <div class="ui container">
-    <h4 class="breakup ui inverted header">
-        {{$.File.ID}}
-    </h4>
-    <div class="ui one column grid">
-        <div class="row">
-            <div class="column">
-                <video controls>
-                    <source src="/watcher/downloads/stream/{{$.Download.ID}}/{{$.File.ID}}">
-                </video>
-            </div>
-        </div>
+    <div class="ui inverted breadcrumb">
+        <a class="section" href="/viewscreen/">Library</a>
+        <div class="divider"> / </div>
+        <a class="section" href="/viewscreen/downloads/files/{{$.Download.ID}}">{{$.Download.ID}}</a>
+    </div>
 
-        <div class="row">
-            <div class="column">
+    <h4 class="breakup ui inverted header">{{$.File.ID}}</h4>
+
+    <video class="video-player" controls="controls" preload="auto">
+        <source src="/viewscreen/downloads/stream/{{$.Download.ID}}/{{$.File.ID}}">
+    </video>
+
+    <div class="ui hidden divider"></div>
+
+    <div class="ui grid">
+        <div class="column row">
+            <div class="right floated right aligned column">
+
                 <div class="ui small inverted basic buttons">
-                    <a href="/watcher/downloads/save/{{$.Download.ID}}/{{$.File.ID}}" class="ui icon button">
+                    <a href="/viewscreen/downloads/save/{{$.Download.ID}}/{{$.File.ID}}" class="ui icon button">
                         <i class="download icon"></i>
                         Download ({{bytes $.File.Info.Size}})
                     </a>
-                    <a target="_blank" href="/watcher/downloads/stream/{{$.Download.ID}}/{{$.File.ID}}" class="ui icon button">
+                    <a target="_blank" href="/viewscreen/downloads/stream/{{$.Download.ID}}/{{$.File.ID}}" class="ui icon button">
                         <i class="external square icon"></i>
                         Pop-out
                     </a>
                 </div>
+
             </div>
         </div>
+
     </div>
 </div>
 

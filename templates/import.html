@@ -1,38 +1,63 @@
 {{template "header.html" .}}
 
 <div class="ui container">
+    <div id="transfers">
+        {{template "transfers/list.html" .}}
+    </div>
 
-    <form class="ui large form" method="GET" action="/watcher/import">
+    <h2 class="ui dividing header">
+        Search
+        {{if $.Results}}
+        <div class="sub header">
+            {{len $.Results}} results
+        </div>
+        {{end}}
+    </h2>
+
+    <div class="ui small text menu">
+        <span class="header item">Saved searches</span>
+        {{if eq $.Query "2013" "2012" "2011"}}
+            <a href="/viewscreen/import?q=2014" class="{{if eq $.Query "2014"}}active{{end}} item">&quot;2014&quot;</a>
+            <a href="/viewscreen/import?q=2013" class="{{if eq $.Query "2013"}}active{{end}} item">&quot;2013&quot;</a>
+            <a href="/viewscreen/import?q=2012" class="{{if eq $.Query "2012"}}active{{end}} item">&quot;2012&quot;</a>
+            <a href="/viewscreen/import?q=2011" class="{{if eq $.Query "2011"}}active{{end}} item">&quot;2011&quot;</a>
+            <a href="/viewscreen/import?q=2010" class="{{if eq $.Query "2010"}}active{{end}} item">&quot;2010&quot;</a>
+        {{else}}
+            <a href="/viewscreen/import?q=2017" class="{{if eq $.Query "2017"}}active{{end}} item">&quot;2017&quot;</a>
+            <a href="/viewscreen/import?q=2016" class="{{if eq $.Query "2016"}}active{{end}} item">&quot;2016&quot;</a>
+            <a href="/viewscreen/import?q=2015" class="{{if eq $.Query "2015"}}active{{end}} item">&quot;2015&quot;</a>
+            <a href="/viewscreen/import?q=2014" class="{{if eq $.Query "2014"}}active{{end}} item">&quot;2014&quot;</a>
+            <a href="/viewscreen/import?q=2013" class="{{if eq $.Query "2013"}}active{{end}} item">&quot;2013&quot;</a>
+        {{end}}
+    </div>
+    <div class="ui hidden divider"></div>
+
+    <form class="ui large form" method="GET" action="/viewscreen/import">
         <div class="field">
             <div class="ui action input">
-				<input type="text" name="q" placeholder="Enter a search query or torrent link" {{if not $.Results}}autofocus="autofocus"{{end}} autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+                <input type="text" name="q" value="{{$.Query}}" placeholder="Enter a search query or torrent link" {{if not $.Results}}autofocus="autofocus"{{end}} autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
                 <button type="submit" class="ui primary button">Search</button>
             </div>
         </div>
     </form>
 
-    <div class="ui hidden divider"></div>
 
 	{{if $.Query}}
-        <div class="ui hidden divider"></div>
-        <a href="/watcher/import" class="ui label">{{$.Query}} <i class="delete icon"></i></a>
-
+        <!--a href="/viewscreen/import" class="ui right floated button"><i class="delete icon"></i>{{$.Query}}</a-->
+        <!--div class="ui hidden clearing divider"></div-->
 
         {{if $.Results}}
-            <table class="ui single line fixed selectable striped unstackable table">
+            <table class="ui large striped single line fixed selectable table">
                 <tbody>
                 {{range $result := $.Results}}
                     {{$dlexists := dlexists $result.Title}}
                     <tr>
-                        <td class="ten wide">
-                            {{$result.Title}}
+                        <td>
+                            <i title="seeders: {{$result.Seeders}} leechers: {{$result.Leechers}}" {{if lt $result.Seeders 10}}class="red circle icon"{{else if lt $result.Seeders 20}}class="yellow circle icon"{{else}}class="green circle icon"{{end}}></i>{{$result.Title}}
                         </td>
-                        <td class="right aligned four wide">
-                            {{bytes $result.Size}}
-                        </td>
-                        <td class="right aligned two wide">
-                            <button class="{{if not $dlexists}}hide{{end}} toggler ui mini icon button" disabled><i class="cloud download icon"></i></button>
-                            <button class="{{if $dlexists }}hide{{end}} toggler ui mini icon button" data-action="/watcher/transfers/magnet" data-key="target" data-value="{{$result.Magnet}}"><i class="cloud download icon"></i></a>
+                        <td>
+                            <button class="{{if not $dlexists}}hide{{end}} toggler ui right floated blue button" disabled>Download {{bytes $result.Size}}</button>
+                            <button class="{{if $dlexists }}hide{{end}} toggler ui right floated blue button" data-action="/viewscreen/transfers/magnet" data-key="target" data-value="{{$result.Magnet}}">Download {{bytes $result.Size}}</a>
                         </td>
                     </tr>
                 {{end}}
@@ -49,17 +74,12 @@
         {{end}}
     {{end}}
 
-	<div class="ui hidden divider"></div>
-
-    <div id="transfers">
-        {{template "transfers/list.html" .}}
-    </div>
 </div>
 
 <script>
     $(document).ready(function() {
         // Transfers should be polled immediately.
-        poller('#transfers', '/watcher/transfers/list', 2000);
+        poller('#transfers', '/viewscreen/transfers/list', 2000);
     });
 </script>
 

@@ -1,17 +1,26 @@
 {{template "header.html" .}}
 
 <div class="ui container">
+    <a class="confirm ui right floated basic red large button" data-prompt="Delete download {{$.Download.ID}}?" href="/viewscreen/downloads/remove/{{$.Download.ID}}">Delete</a>
+    <div class="ui breadcrumb">
+        <a class="section" href="/viewscreen/">Library</a>
+        <div class="divider"> / </div>
+        <div class="active section">{{$.Download.ID}}</div>
+    </div>
+    <div class="ui hidden divider"></div>
 
-    <a class="ui large basic button" href="/watcher/"><i class="blue level up icon"></i>Library</a>
-
-    <a class="confirm ui right floated basic red large icon button" data-prompt="Delete download {{$.Download.ID}}?" href="/watcher/downloads/remove/{{$.Download.ID}}"><i class="trash icon"></i></a>
-
-    <button class="{{if not $.Download.Shared}}hide{{end}} toggler ui right floated large green button" title="Unshare" data-action="/watcher/downloads/unshare/{{$.Download.ID}}"><i class="checkmark icon"></i>Shared</button>
-    <button class="{{if $.Download.Shared}}hide{{end}} toggler ui right floated large green inverted button" title="Share" data-action="/watcher/downloads/share/{{$.Download.ID}}"><i class="checkmark icon"></i>Share&nbsp;</button>
-
-    <h4 class="breakup ui header">
-        {{$.Download.ID}}
-    </h4>
+    {{if $.Download.Uploading}}
+        <div class="ui icon message">
+            <i class="cloud upload icon"></i>
+            <div class="content">
+                <div class="header">Uploading in progress</div>
+                <p>This download is still actively <a href="/viewscreen/import">uploading</a> on the torrent network. You can adjust your upload ratio in the <a href="/viewscreen/settings">settings page</a>.</p>
+                <ul class="list">
+                    <li>Note: you cannot convert files while they are uploading.</li>
+                </ul>
+            </div>
+        </div>
+    {{end}}
 
     <div class="ui hidden clearing divider"></div>
 
@@ -27,46 +36,46 @@
                 <div class="filescard ui fluid card">
 
                     {{if $viewable}}
-                        <a class="image" href="/watcher/downloads/view/{{$.Download.ID}}/{{$file.ID}}">
+                        <a class="image" href="/viewscreen/downloads/view/{{$.Download.ID}}/{{$file.ID}}">
                             {{if $thumbnail}}
-                                <img src="/watcher/downloads/stream/{{$.Download.ID}}/{{$file.ID}}.thumbnail.png">
+                                <img src="/viewscreen/downloads/stream/{{$.Download.ID}}/{{$file.ID}}.thumbnail.png">
                             {{else}}
-                                <img class="notfound" src="/watcher/static/notfound.png">
+                                <img class="notfound" src="/viewscreen/static/notfound.png">
                             {{end}}
                         </a>
                     {{else if $file.Clickable}}
-                        <a class="image" href="/watcher/downloads/stream/{{$.Download.ID}}/{{$file.ID}}">
+                        <a class="image" href="/viewscreen/downloads/stream/{{$.Download.ID}}/{{$file.ID}}">
                             {{if $thumbnail}}
-                                <img src="/watcher/downloads/stream/{{$.Download.ID}}/{{$file.ID}}.thumbnail.png">
+                                <img src="/viewscreen/downloads/stream/{{$.Download.ID}}/{{$file.ID}}.thumbnail.png">
                             {{else}}
-                                <img class="notfound" src="/watcher/static/notfound.png">
+                                <img class="notfound" src="/viewscreen/static/notfound.png">
                             {{end}}
                         </a>
                     {{else}}
-                        <a class="image" href="/watcher/downloads/save/{{$.Download.ID}}/{{$file.ID}}">
+                        <a class="image" href="/viewscreen/downloads/save/{{$.Download.ID}}/{{$file.ID}}">
                             {{if $thumbnail}}
-                                <img src="/watcher/downloads/stream/{{$.Download.ID}}/{{$file.ID}}.thumbnail.png">
+                                <img src="/viewscreen/downloads/stream/{{$.Download.ID}}/{{$file.ID}}.thumbnail.png">
                             {{else}}
-                                <img class="notfound" src="/watcher/static/notfound.png">
+                                <img class="notfound" src="/viewscreen/static/notfound.png">
                             {{end}}
                         </a>
                     {{end}}
 
                     <div class="content">
                         {{if $viewable}}
-                            <a class="breakup header" href="/watcher/downloads/view/{{$.Download.ID}}/{{$file.ID}}">
+                            <a class="breakup header" href="/viewscreen/downloads/view/{{$.Download.ID}}/{{$file.ID}}">
                                 {{$file.ID}}
                             </a>
                         {{else if $clickable}}
-                            <a class="breakup header" href="/watcher/downloads/stream/{{$.Download.ID}}/{{$file.ID}}">
+                            <a class="breakup header" href="/viewscreen/downloads/stream/{{$.Download.ID}}/{{$file.ID}}">
                                 {{$file.ID}}
                             </a>
                         {{else if $transcoding}}
-                            <a class="breakup header" href="/watcher/downloads/save/{{$.Download.ID}}/{{$file.ID}}">
+                            <a class="breakup header" href="/viewscreen/downloads/save/{{$.Download.ID}}/{{$file.ID}}">
                                 {{$file.ID}}
                             </a>
                         {{else}}
-                            <a class="breakup header" href="/watcher/downloads/save/{{$.Download.ID}}/{{$file.ID}}">
+                            <a class="breakup header" href="/viewscreen/downloads/save/{{$.Download.ID}}/{{$file.ID}}">
                                 {{$file.ID}}
                             </a>
                         {{end}}
@@ -77,29 +86,29 @@
 
                     {{if $transcoding}}
                         <div class="extra content">
-                            <a href="/watcher/transcode/cancel/{{$.Download.ID}}/{{$file.ID}}" class="ui red fluid button"><i class="orange asterisk loading icon"></i>Cancel</a>
+                            <a href="/viewscreen/transcode/cancel/{{$.Download.ID}}/{{$file.ID}}" class="ui red fluid button"><i class="orange asterisk loading icon"></i>Cancel</a>
                         </div>
                     {{else if $convertible}}
                         <div class="extra content">
                             {{if $.Download.Uploading}}
                                 <a class="ui orange fluid disabled button" data-tooltip="Disabled while uploading" title="Disabled while uploading">
                             {{else}}
-                                <a href="/watcher/transcode/start/{{$.Download.ID}}/{{$file.ID}}" class="ui orange fluid button">
+                                <a href="/viewscreen/transcode/start/{{$.Download.ID}}/{{$file.ID}}" class="ui orange fluid button">
                             {{end}}
                             <i class="file video outline icon"></i>Convert MP4</a>
                         </div>
                     {{else}}
                         <div class="extra content">
                             {{if $viewable}}
-                                <a class="ui fluid basic button" href="/watcher/downloads/view/{{$.Download.ID}}/{{$file.ID}}">
+                                <a class="ui fluid blue button" href="/viewscreen/downloads/view/{{$.Download.ID}}/{{$file.ID}}">
                                     <i class="play icon"></i>View
                                 </a>
                             {{else if $clickable}}
-                                <a class="ui fluid basic button" href="/watcher/downloads/stream/{{$.Download.ID}}/{{$file.ID}}">
+                                <a class="ui fluid basic button" href="/viewscreen/downloads/stream/{{$.Download.ID}}/{{$file.ID}}">
                                     <i class="file icon"></i>View
                                 </a>
                             {{else}}
-                                <a class="ui fluid basic button" href="/watcher/downloads/save/{{$.Download.ID}}/{{$file.ID}}">
+                                <a class="ui fluid basic button" href="/viewscreen/downloads/save/{{$.Download.ID}}/{{$file.ID}}">
                                     <i class="download icon"></i>Download
                                 </a>
                             {{end}}
@@ -115,4 +124,3 @@
 </div>
 
 {{template "footer.html" .}}
-

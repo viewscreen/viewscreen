@@ -1,9 +1,9 @@
 FROM golang:1.9
-MAINTAINER Watcher Cloud <github@watcher.cloud>
+MAINTAINER viewscreen Cloud <github@viewscreen.cloud>
 
 RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /go/src/github.com/watchercloud/watcher
+WORKDIR /go/src/github.com/viewscreen/viewscreen
 
 RUN go get \
     github.com/jteeuwen/go-bindata/... \
@@ -26,7 +26,7 @@ COPY internal ./internal
 COPY static ./static
 COPY templates ./templates
 
-ARG WATCHER_VERSION=unknown
+ARG BUILD_VERSION=unknown
 
 ENV GODEBUG="netdns=go http2server=0"
 ENV GOPATH="/go"
@@ -37,11 +37,11 @@ RUN go fmt && \
     go-bindata --pkg main static/... templates/...
 
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-    go build -v --compiler gc --ldflags "-extldflags -static -s -w -X main.version=${WATCHER_VERSION}" -o /usr/bin/watcher-linux-amd64
+    go build -v --compiler gc --ldflags "-extldflags -static -s -w -X main.version=${BUILD_VERSION}" -o /usr/bin/viewscreen-linux-amd64
 
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 \
-    go build -v --compiler gc --ldflags "-extldflags -static -s -w -X main.version=${WATCHER_VERSION}" -o /usr/bin/watcher-linux-armv7
+    go build -v --compiler gc --ldflags "-extldflags -static -s -w -X main.version=${BUILD_VERSION}" -o /usr/bin/viewscreen-linux-armv7
 
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
-    go build -v --compiler gc --ldflags "-extldflags -static -s -w -X main.version=${WATCHER_VERSION}" -o /usr/bin/watcher-linux-arm64
+    go build -v --compiler gc --ldflags "-extldflags -static -s -w -X main.version=${BUILD_VERSION}" -o /usr/bin/viewscreen-linux-arm64
 

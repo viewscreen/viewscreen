@@ -1,17 +1,17 @@
 
-        {{if ne $.Section "nonav"}}
         </div><!--full height-->
 
         <div class="ui container">
+            <div class="ui hidden divider"></div>
+
             <div class="ui right floated horizontal list">
-                <div class="disabled item" href="/watcher/">Watcher Cloud {{$.Version}}</div>
+                <div class="disabled item" href="/viewscreen/">viewscreen Cloud {{$.Version}}</div>
             </div>
 
             <div class="ui horizontal list">
                 <div class="item">&nbsp;</div>
             </div>
         </div>
-        {{end}}
 
         <script>
             window.pollerJob = {};
@@ -89,8 +89,11 @@
                     $(target).val(value);
                 });
 
-
-                /* $('.message .close').on('click', function() { $(this).closest('.message').transition('fade'); }); */
+                // Close button.
+                $('.message .close').on('click', function() {
+                    $(this).closest('.message').transition('fade');
+                    history.pushState(null, '', location.href.split('?')[0]);
+                });
 
                 // set volume on video player to 50%
                 $('video').prop('volume', 0.5);

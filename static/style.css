@@ -1,9 +1,21 @@
+.ui.inverted.breadcrumb, .ui.inverted.breadcrumb > a, .ui.inverted.breadcrumb > div {
+    color: #f9f9f9;
+}
+
+.ui.blue.button, .ui.primary.button {
+    background-color: #17a0dd !important;
+}
+
+.blue.icon {
+    color: #17a0dd !important;
+}
+
 .dlscard {
-    min-height: 260px !important;
+    min-height: 330px !important;
 }
 
 .filescard {
-    min-height: 320px !important;
+    min-height: 330px !important;
 }
 
 .notfound {
@@ -23,7 +35,7 @@
 }
 
 .navmenu {
-    background-color: #1d1d1d !important;
+    background-color: #17a0dd !important;
     border-radius: 0 !important;
 }
 
@@ -31,7 +43,12 @@
     max-width: 22px;
 }
 
-video {
+.screencast {
+    max-width: 100%;
+    box-shadow: 1px 1px 6px rgba(0, 0, 0, 0.3);
+}
+
+.video-player {
     width: 100%;
     border-radius: 3px;
 }
@@ -64,7 +81,6 @@ video {
     text-overflow: ellipsis;
     overflow: hidden;
 }
-
 
 .ui.positive.message a {
     float: right;

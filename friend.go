@@ -28,7 +28,7 @@ func (f *Friend) Downloads() []FriendDownload {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	endpoint := fmt.Sprintf("https://%s/watcher/v1/downloads?friend=%s", f.ID, httpHost)
+	endpoint := fmt.Sprintf("https://%s/viewscreen/v1/downloads?friend=%s", f.ID, httpHost)
 
 	res, err := GET(ctx, endpoint)
 	if err != nil {

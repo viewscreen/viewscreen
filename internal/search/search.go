@@ -29,7 +29,7 @@ func init() {
 }
 
 func Search(query string) ([]Result, error) {
-	rawurl := "https://thepiratebay.org/search/" + url.QueryEscape(query) + "/0/99/0"
+	rawurl := "https://thepiratebay.org/search/" + url.QueryEscape(query) + "/0/99/200"
 
 	res, err := GET(rawurl)
 	if err != nil {

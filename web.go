@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/watchercloud/watcher/internal/downloader"
-	"github.com/watchercloud/watcher/internal/search"
+	"github.com/viewscreen/viewscreen/internal/downloader"
+	"github.com/viewscreen/viewscreen/internal/search"
 
 	humanize "github.com/dustin/go-humanize"
 	httprouter "github.com/julienschmidt/httprouter"
@@ -43,6 +43,7 @@ type Response struct {
 	Transfers        []downloader.Transfer
 	TransfersPending []downloader.Transfer
 
+	Sort  string
 	Query string
 
 	Results []search.Result
@@ -87,7 +88,7 @@ var (
             </head>
             <body>
                 <h2 style="color: orangered;">ERROR</h2>
-                <h3><a href="/watcher/logs">Logs</a></h3>
+                <h3><a href="/viewscreen/logs">Logs</a></h3>
             </body>
         </html>
     `

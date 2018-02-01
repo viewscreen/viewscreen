@@ -13,7 +13,8 @@ type Config struct {
 	filename string
 
 	// Settings
-	Ratio float64 `json:"ratio"`
+	Ratio     float64 `json:"ratio"`
+	AcceptTOS bool    `json:"accept_tos"`
 }
 
 func NewConfig(filename string) (*Config, error) {
@@ -24,6 +25,7 @@ func NewConfig(filename string) (*Config, error) {
 	// Default for new config
 	if os.IsNotExist(err) {
 		c.Ratio = 1.5
+		c.AcceptTOS = false
 		return c, c.Save()
 	}
 	if err != nil {
@@ -42,13 +44,21 @@ func (c *Config) Get() Config {
 	defer c.RUnlock()
 
 	return Config{
-		Ratio: c.Ratio,
+		Ratio:     c.Ratio,
+		AcceptTOS: c.AcceptTOS,
 	}
 }
 
 func (c *Config) SetRatio(n float64) error {
 	c.Lock()
 	c.Ratio = n
+	c.Unlock()
+	return c.Save()
+}
+
+func (c *Config) SetAcceptTOS(v bool) error {
+	c.Lock()
+	c.AcceptTOS = v
 	c.Unlock()
 	return c.Save()
 }

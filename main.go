@@ -23,9 +23,9 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
-	"github.com/watchercloud/watcher/internal/downloader"
-	"github.com/watchercloud/watcher/internal/search"
-	"github.com/watchercloud/watcher/internal/transcoder"
+	"github.com/viewscreen/viewscreen/internal/downloader"
+	"github.com/viewscreen/viewscreen/internal/search"
+	"github.com/viewscreen/viewscreen/internal/transcoder"
 
 	"github.com/eduncan911/podcast"
 	"github.com/julienschmidt/httprouter"
@@ -132,8 +132,8 @@ func init() {
 	cli.StringVar(&backlink, "backlink", "", "backlink (optional)")
 	cli.StringVar(&httpAddr, "http-addr", ":80", "listen address")
 	cli.StringVar(&httpHost, "http-host", "", "HTTP host")
-	cli.StringVar(&httpPrefix, "http-prefix", "/watcher", "HTTP URL prefix (not supported yet)")
-	cli.StringVar(&httpUsername, "http-username", "watcher", "HTTP basic auth username")
+	cli.StringVar(&httpPrefix, "http-prefix", "/viewscreen", "HTTP URL prefix (not supported yet)")
+	cli.StringVar(&httpUsername, "http-username", "viewscreen", "HTTP basic auth username")
 	cli.StringVar(&torrentListenAddr, "torrent-addr", ":61337", "listen address for torrent client")
 	cli.StringVar(&reverseProxyAuthIP, "reverse-proxy-ip", "", "reverse proxy auth IP")
 	cli.StringVar(&reverseProxyAuthHeader, "reverse-proxy-header", "X-Authenticated-User", "reverse proxy auth header")
@@ -161,41 +161,56 @@ func logs(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 func library(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	res := NewResponse(r, ps)
 	query := strings.ToLower(strings.TrimSpace(r.FormValue("q")))
+	sortby := strings.ToLower(strings.TrimSpace(r.FormValue("s")))
+	tos := r.FormValue("tos")
 
-	dls, err := ListDownloads()
+	// Accept TOS
+	if tos == "yes" {
+		if err := config.SetAcceptTOS(true); err != nil {
+			Error(w, err)
+			return
+		}
+	}
+
+	// Require TOS
+	if !config.Get().AcceptTOS {
+		Redirect(w, r, "/help")
+		return
+	}
+	if sortby != "name" {
+		sortby = "time"
+	}
+
+	rawdls, err := ListDownloads()
 	if err != nil {
 		Error(w, err)
 		return
 	}
 
-	// Most recent
-	if len(dls) > 0 {
-		recent := make([]Download, len(dls))
-		copy(recent, dls)
-		sort.Slice(recent, func(i, j int) bool { return recent[i].Created.After(recent[j].Created) })
-		for i, dl := range recent {
-			res.Downloads = append(res.Downloads, dl)
-			if i == 4 {
-				break
-			}
-		}
-	}
+	var dls []Download
 
 	// Filter library
 	if query != "" {
-		for _, dl := range dls {
+		for _, dl := range rawdls {
 			text := strings.ToLower(dl.ID)
 			if !strings.Contains(text, strings.ToLower(query)) {
 				continue
 			}
-			res.Library = append(res.Library, dl)
+			dls = append(dls, dl)
 		}
 	} else {
-		res.Library = dls
+		dls = rawdls
+	}
+
+	// sort by recent
+	if sortby == "time" {
+		sort.Slice(dls, func(i, j int) bool { return dls[i].Created.After(dls[j].Created) })
 	}
 
 	res.Query = query
 	res.Section = "library"
+	res.Library = dls
+	res.Sort = sortby
 	HTML(w, "index.html", res)
 }
 
@@ -378,7 +393,7 @@ func transcodeStart(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 		Error(w, err)
 		return
 	}
-	Redirect(w, r, "/downloads/files/%s", dl.ID)
+	Redirect(w, r, "/downloads/files/%s?message=transcoding", dl.ID)
 }
 
 func transcodeCancel(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
@@ -408,6 +423,12 @@ func transcodeCancel(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 //
 
 func friends(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	// Require TOS
+	if !config.Get().AcceptTOS {
+		Redirect(w, r, "/help")
+		return
+	}
+
 	friends, err := ListFriends()
 	if err != nil {
 		Error(w, err)
@@ -424,12 +445,7 @@ var validFriendHost = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9\.\-]+$`)
 
 func friendAdd(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	host := strings.TrimSpace(r.FormValue("host"))
-	if host == "" {
-		Error(w, fmt.Errorf("no friend host"))
-		return
-	}
-
-	if !validFriendHost.MatchString(host) {
+	if host == "" || !validFriendHost.MatchString(host) {
 		Redirect(w, r, "/friends?message=friendinvalidhost")
 		return
 	}
@@ -467,7 +483,7 @@ func friendDownload(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 	endpoint := &url.URL{
 		Scheme:   "https",
 		Host:     f.ID,
-		Path:     "/watcher/v1/downloads/files/" + dl,
+		Path:     "/viewscreen/v1/downloads/files/" + dl,
 		RawQuery: "friend=" + httpHost,
 	}
 
@@ -477,6 +493,13 @@ func friendDownload(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 	}
 
 	Redirect(w, r, "/?message=transferstarted")
+}
+
+func help(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	res := NewResponse(r, ps)
+	res.Section = "help"
+	HTML(w, "help.html", res)
+	return
 }
 
 //
@@ -513,6 +536,13 @@ func importHandler(w http.ResponseWriter, r *http.Request, ps httprouter.Params)
 	res := NewResponse(r, ps)
 
 	query := strings.TrimSpace(r.FormValue("q"))
+
+	// Require TOS
+	if !config.Get().AcceptTOS {
+		Redirect(w, r, "/help")
+		return
+	}
+
 	if query != "" {
 		// Add URL
 		if strings.HasPrefix(query, "http") || strings.HasPrefix(query, "magnet") {
@@ -528,10 +558,10 @@ func importHandler(w http.ResponseWriter, r *http.Request, ps httprouter.Params)
 			Error(w, err)
 			return
 		}
-		// Truncate results
-		if len(results) > 15 {
-			results = results[0:14]
-		}
+		//// Truncate results
+		//if len(results) > 15 {
+		//	results = results[0:14]
+		//}
 
 		res.Results = results
 		res.Query = query
@@ -548,6 +578,18 @@ func importHandler(w http.ResponseWriter, r *http.Request, ps httprouter.Params)
 //
 // Feeds
 //
+
+func feedIndex(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	// Require TOS
+	if !config.Get().AcceptTOS {
+		Redirect(w, r, "/help")
+		return
+	}
+
+	res := NewResponse(r, ps)
+	res.Section = "feed"
+	HTML(w, "feed.html", res)
+}
 
 func feedPodcast(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	secret := ps.ByName("secret")
@@ -578,10 +620,10 @@ func feedPodcast(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	}
 
 	baseurl := BaseURL(r)
-	title := "Watcher - " + httpHost
+	title := "viewscreen - " + httpHost
 
 	p := podcast.New(title, baseurl, title, &updated, &updated)
-	p.AddAuthor(httpHost, "watcher@"+httpHost)
+	p.AddAuthor(httpHost, "viewscreen@"+httpHost)
 	p.AddImage(baseurl + "/logo.png")
 
 	for _, dl := range dls {
@@ -837,7 +879,7 @@ func main() {
 	}
 
 	if showVersion {
-		fmt.Printf("Watcher %s\n", version)
+		fmt.Printf("viewscreen %s\n", version)
 		os.Exit(0)
 	}
 
@@ -972,13 +1014,16 @@ func main() {
 	r.POST(Prefix("/friends/download/:host/:dl"), Log(Auth(friendDownload, true)))
 
 	// Feed
+	r.GET(Prefix("/feed"), Log(feedIndex))
 	r.GET(Prefix("/podcast/:secret"), Log(feedPodcast))
+	r.HEAD(Prefix("/feed/stream/:id/*file"), Log(feedStream))
 	r.GET(Prefix("/feed/stream/:id/*file"), Log(feedStream))
 	r.GET(Prefix("/feed/reset"), Log(Auth(feedReset, false)))
 
 	// Settings
 	r.GET(Prefix("/settings"), Log(Auth(settings, false)))
 	r.POST(Prefix("/settings"), Log(Auth(settings, false)))
+	r.GET(Prefix("/help"), Log(Auth(help, false)))
 
 	// Import
 	r.GET(Prefix("/import"), Log(Auth(importHandler, false)))
@@ -987,6 +1032,7 @@ func main() {
 	r.GET(Prefix("/v1/status"), Log(v1Status))
 	r.GET(Prefix("/v1/downloads"), Log(Auth(v1Downloads, true)))
 	r.GET(Prefix("/v1/downloads/files/:id"), Log(Auth(v1Files, true)))
+	r.HEAD(Prefix("/v1/downloads/stream/:id/*file"), Log(Auth(v1Stream, true)))
 	r.GET(Prefix("/v1/downloads/stream/:id/*file"), Log(Auth(v1Stream, true)))
 
 	// Assets
@@ -1012,7 +1058,7 @@ func main() {
 		if httpPort == "80" {
 			hostport = httpHost
 		}
-		logger.Infof("Watcher version: %s %s", version, &url.URL{
+		logger.Infof("viewscreen version: %s %s", version, &url.URL{
 			Scheme: "http",
 			Host:   hostport,
 			Path:   httpPrefix + "/",
@@ -1097,7 +1143,7 @@ func main() {
 	if httpPort == "443" {
 		hostport = httpHost
 	}
-	logger.Infof("Watcher version: %s %s", version, &url.URL{
+	logger.Infof("viewscreen version: %s %s", version, &url.URL{
 		Scheme: "https",
 		Host:   hostport,
 		Path:   httpPrefix + "/",

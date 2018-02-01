@@ -4,12 +4,10 @@
     <h2 class="ui header">Settings</h2>
     <div class="ui hidden divider"></div>
 
-    <form class="ui large form" method="POST" action="/watcher/settings">
+    <form class="ui large form" method="POST" action="/viewscreen/settings">
         <div class="fields">
-            <div class="ten wide field">
+            <div class="field">
                 <label>Seed ratio</label>
-            </div>
-            <div class="six wide field">
                 <input type="text" id="ratio" name="ratio" value="{{$.Config.Ratio}}" class="fluid">
                 <br>
                 <div class="ui basic mini buttons">
@@ -25,11 +23,9 @@
         <div class="ui hidden divider"></div>
 
         <div class="fields">
-            <div class="ten wide field">
+            <div class="field">
                 <label>Reset podcast secret URL</label>
-            </div>
-            <div class="six wide field">
-                <a class="confirm ui fluid red basic mini button" href="/watcher/feed/reset" data-prompt="Generate new private podcast URL?">Reset secret</a>
+                <a class="confirm ui fluid red basic mini button" href="/viewscreen/feed/reset" data-prompt="Generate new private podcast URL?">Reset secret</a>
             </div>
         </div>
 
@@ -37,10 +33,8 @@
         <div class="ui hidden divider"></div>
 
         <div class="fields">
-            <div class="ten wide field">
+            <div class="field">
                 <label>&nbsp;</label>
-            </div>
-            <div class="six wide field">
                 <button type="submit" class="ui fluid primary button">Save settings</button>
             </div>
         </div>

@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/watchercloud/watcher/internal/downloader"
+	"github.com/viewscreen/viewscreen/internal/downloader"
 )
 
 var ErrDownloadNotFound = errors.New("download not found")

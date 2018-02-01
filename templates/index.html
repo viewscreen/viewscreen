@@ -1,33 +1,6 @@
 {{template "header.html" .}}
 
 <div class="ui container">
-
-    {{if not $.Query}}
-    {{if $.Downloads}}
-        <h2 class="ui header">Most Recent</h2>
-        <div class="ui stackable four column grid">
-            {{range $dl := $.Downloads}}
-                <div class="column">
-                    <div class="dlscard ui fluid card">
-                        <a class="image" href="/watcher/downloads/files/{{$dl.ID}}">
-                            {{if $dl.Thumbnail}}
-                                <img src="/watcher/downloads/stream/{{$dl.ID}}/thumbnail.png">
-                            {{else}}
-                                <img class="notfound" src="/watcher/static/notfound.png">
-                            {{end}}
-                        </a>
-                        <div class="content">
-                            <a class="breakup header" href="/watcher/downloads/files/{{$dl.ID}}">{{$dl.ID}}</a>
-                            <div class="meta">{{bytes $dl.Size}}</div>
-                        </div>
-                    </div>
-                </div>
-            {{end}}
-        </div>
-        <div class="ui hidden section divider"></div>
-    {{end}}
-    {{end}}
-
     <h2 class="ui header">
         Library
         <div class="sub header">
@@ -35,7 +8,7 @@
         </div>
     </h2>
 
-    <form class="ui small form" action="/watcher/" method="GET">
+    <form class="ui form" action="/viewscreen/" method="GET">
         <div class="fields">
             <div class="eight wide field">
                 <input type="text" name="q" value="{{$.Query}}" placeholder="Filter" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
@@ -43,60 +16,63 @@
         </div>
     </form>
 
+    <div class="ui secondary menu">
+        <div class="header item">Sort by</div>
+        <a class="{{if eq $.Sort "time"}}active{{end}} item" href="/viewscreen/?q={{.Query}}&s=time">Time</a>
+        <span>&middot;</span>
+        <a class="{{if ne $.Sort "time"}}active{{end}} item" href="/viewscreen/?q={{.Query}}&s=name">Name</a>
+    </div>
+
     <div class="ui hidden divider"></div>
 
     {{if $.Query}}
         <div class="ui hidden divider"></div>
-        <a href="/watcher/" class="ui image label">{{$.Query}} <i class="delete icon"></i></a>
+        <a href="/viewscreen/" class="ui image label">{{$.Query}} <i class="delete icon"></i></a>
         <div class="ui hidden divider"></div>
     {{end}}
 
     {{if $.Library}}
-        <div class="ui stackable four column grid">
+        <div class="ui stackable three column grid">
             {{range $dl := $.Library}}
                 <div class="column">
                     <div class="dlscard ui fluid card">
-                        <a class="image" href="/watcher/downloads/files/{{$dl.ID}}">
+                        <a class="image" href="/viewscreen/downloads/files/{{$dl.ID}}">
                             {{if $dl.Thumbnail}}
-                                <img src="/watcher/downloads/stream/{{$dl.ID}}/thumbnail.png">
+                                <img src="/viewscreen/downloads/stream/{{$dl.ID}}/thumbnail.png">
                             {{else}}
-                                <img class="notfound" src="/watcher/static/notfound.png">
+                                <img class="notfound" src="/viewscreen/static/notfound.png">
                             {{end}}
                         </a>
                         <div class="content">
-                            <a class="breakup header" href="/watcher/downloads/files/{{$dl.ID}}">{{$dl.ID}}</a>
+                            <a class="breakup header" href="/viewscreen/downloads/files/{{$dl.ID}}">{{$dl.ID}}</a>
                             <div class="meta">{{bytes $dl.Size}}</div>
                         </div>
+                        <button class="{{if not $dl.Shared}}hide{{end}} toggler ui large green button" title="Unshare" data-action="/viewscreen/downloads/unshare/{{$dl.ID}}"><i class="checkmark box icon"></i>Shared</button>
+                        <button class="{{if $dl.Shared}}hide{{end}} toggler ui large green inverted button" title="Share" data-action="/viewscreen/downloads/share/{{$dl.ID}}"><i class="square outline icon"></i>Share&nbsp;</button>
                     </div>
                 </div>
             {{end}}
         </div>
     {{else}}
-        <div class="ui center aligned clearing segment">
-            <div class="ui hidden divider"></div>
-            <h4 class="ui center aligned grey header">
-                {{if $.Query}}
-                    No results for &quot;{{.Query}}&quot;
-                {{else}}
-                    There are no downloads yet.
-                {{end}}
-            </h4>
-
-            <div class="ui hidden divider"></div>
+        <div class="ui large message">
+            <div class="header">You have no downloads</div>
+            <p>
+                Need help? Visit the <a href="/viewscreen/help">help page</a> for more info.
+            </p>
         </div>
     {{end}}
             <!--tr>
                 <td class="nomobile center aligned one wide">
-                    <a href="/watcher/downloads/files/$dl.ID">
+                    <a href="/viewscreen/downloads/files/$dl.ID">
                         if $dl.Thumbnail
-                            <img class="thumbnail" src="/watcher/downloads/stream/$dl.ID/thumbnail.png">
+                            <img class="thumbnail" src="/viewscreen/downloads/stream/$dl.ID/thumbnail.png">
                         else
                             <i class="big folder icon"></i>
                         end
                     </a>
                 </td>
                 <td class="twelve wide">
-                    <a href="/watcher/downloads/files/$dl.ID">$dl.ID</a>
+                    <a href="/viewscreen/downloads/files/$dl.ID">$dl.ID</a>
                 </td>
                 <td class="right aligned three wide">
                     bytes $dl.Size
@@ -105,13 +81,13 @@
 
     <div class="ui hidden divider"></div>
 
-    <div class="ui one column grid">
+    <!--div class="ui one column grid">
         <div class="center aligned one column row">
             <div class="column">
-				<a class="ui mini basic icon button" rel="alternate" type="application/rss+xml" href="/watcher/podcast/{{$.FeedSecret}}" data-tooltip="Your private podcast URL (do not share)"><i class="podcast icon"></i></a>
+				<a class="ui mini basic icon button" rel="alternate" type="application/rss+xml" href="/viewscreen/podcast/{{$.FeedSecret}}" data-tooltip="Your private podcast URL (do not share)"><i class="podcast icon"></i></a>
             </div>
         </div>
-    </div>
+    </div-->
 
 </div>
 

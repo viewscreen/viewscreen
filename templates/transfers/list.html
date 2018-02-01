@@ -1,59 +1,52 @@
 {{if or $.Transfers $.TransfersPending}}
-    <h5 class="ui header">
-        {{len $.Transfers}} active &nbsp; {{len $.TransfersPending}} queued
-    </h5>
+    <h2 class="ui dividing header">
+        Transfers
+        <div class="sub header">
+            {{len $.Transfers}} active &nbsp; {{len $.TransfersPending}} queued
+        </div>
+    </h2>
 {{end}}
 
 {{range $t := $.Transfers}}
-    <table class="ui single line fixed table">
-        <tbody>
-            <tr>
-                <td class="twelve wide">
-                    <h4 class="truncate">
-                        {{$t.String}}
-                    </h4>
-                </td>
-                <td class="four wide">
-					{{if $t.Uploading}}
-						<a target="_parent" href="/watcher/transfers/cancel/{{$t.ID}}" class="ui right floated mini basic button">Done</i></a>
-					{{else}}
-						<a target="_parent" href="/watcher/transfers/cancel/{{$t.ID}}" data-prompt="Cancel {{$t.String}}?" class="confirm ui right floated mini red basic button">Cancel</i></a>
-					{{end}}
-                </td>
-            </tr>
-            {{if $t.Uploading}}
-                <tr>
-                    <td colspan="2">
-						Uploading
-						{{bytes $t.UploadedBytes}}
-                        {{if gt $t.SeedRatio 0.0}}
-                            {{$percent := percent $t.UploadedBytes $t.TotalSeedSize}}
-                            ({{$percent | printf "%.0f"}}%)
-                            of
-                            {{bytes $t.TotalSeedSize}} ({{$t.SeedRatio | printf "%.1f"}}x)
-						{{else}}
-							(unlimited)
-						{{end}}
-                    </td>
-                </tr>
-            {{else if $t.DownloadedBytes}}
-                {{$percent := percent $t.DownloadedBytes $t.TotalSize}}
-                <tr>
-                    <td colspan="2">
-                        <div id="progress-{{$t.ID}}" class="ui indicating progress" data-percent="{{$percent | printf "%.0f"}}">
-                            <div class="bar"></div>
-                            <div class="label">
-                                Downloading {{bytes $t.DownloadedBytes}}
-                                ({{$percent | printf "%.0f"}}%)
-                                    of
-                                {{bytes $t.TotalSize}}
-                            </div>
-                        </div>
-                    </td>
-                </tr>
-            {{end}}
-        </tbody>
-    </table>
+
+    <h3 class="truncate ui top attached header">{{$t.String}}</h3>
+    {{if $t.Uploading}}
+        <div class="ui attached segment">
+            <p>
+                Uploading
+                {{bytes $t.UploadedBytes}}
+                {{if gt $t.SeedRatio 0.0}}
+                    {{$percent := percent $t.UploadedBytes $t.TotalSeedSize}}
+                    ({{$percent | printf "%.0f"}}%)
+                    of
+                    {{bytes $t.TotalSeedSize}} ({{$t.SeedRatio | printf "%.1f"}}x)
+                {{else}}
+                    (unlimited)
+                {{end}}
+            </p>
+        </div>
+    {{else if $t.DownloadedBytes}}
+        <div class="ui attached segment">
+            {{$percent := percent $t.DownloadedBytes $t.TotalSize}}
+
+            <div id="progress-{{$t.ID}}" class="ui blue progress" data-percent="{{$percent | printf "%.0f"}}">
+                <div class="bar"></div>
+                <div class="label">
+                    Downloading {{bytes $t.DownloadedBytes}}
+                    ({{$percent | printf "%.0f"}}%)
+                        of
+                    {{bytes $t.TotalSize}}
+                </div>
+            </div>
+        </div>
+    {{end}}
+
+    {{if $t.Uploading}}
+        <a href="/viewscreen/transfers/cancel/{{$t.ID}}" class="ui bottom attached basic button" tabindex="0">Done</a>
+    {{else}}
+        <a href="/viewscreen/transfers/cancel/{{$t.ID}}" data-prompt="Cancel {{$t.String}}?" class="confirm ui bottom attached basic button" tabindex="0">Cancel</a>
+    {{end}}
+
     <script>
         $(document).ready(function() {
             $('#progress-{{$t.ID}}').progress({

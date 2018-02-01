@@ -1,0 +1,33 @@
+{{template "header.html" .}}
+
+<div class="ui container">
+
+    <h1 class="ui header">
+        Devices
+        <div class="sub header">
+            Access your library from any device using your private podcast feed.
+        </div>
+    </h1>
+
+    <div class="ui hidden divider"></div>
+
+    <div class="ui small form">
+        <div class="field">
+            <input class="readonly" value="https://{{$.HTTPHost}}/viewscreen/podcast/{{$.FeedSecret}}">
+        </div>
+    </div>
+
+    <div class="ui hidden divider"></div>
+
+    <div class="ui one column grid">
+        <div class="center aligned one column row">
+            <div class="column">
+				<a class="ui massive blue button" rel="alternate" type="application/rss+xml" href="/viewscreen/podcast/{{$.FeedSecret}}" data-tooltip="Your private podcast URL (do not share)"><i class="podcast icon"></i> Podcast feed</a>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+
+{{template "footer.html" .}}

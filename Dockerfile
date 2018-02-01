@@ -1,5 +1,5 @@
 FROM alpine:latest
-MAINTAINER Watcher Cloud <github@watcher.cloud>
+MAINTAINER viewscreen Cloud <github@viewscreen.cloud>
 
 RUN apk --no-cache add \
     curl \
@@ -9,6 +9,6 @@ RUN apk --no-cache add \
 
 WORKDIR /data
 
-COPY watcher-linux-amd64 /usr/bin/watcher
+COPY viewscreen-linux-amd64 /usr/bin/viewscreen
 
-ENTRYPOINT ["/usr/bin/watcher"]
+ENTRYPOINT ["/usr/bin/viewscreen"]

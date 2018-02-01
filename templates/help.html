@@ -1,0 +1,153 @@
+{{template "header.html" .}}
+
+<div class="ui container">
+
+    <div class="ui raised segment">
+        <h1 class="ui center aligned header">
+            Viewscreen
+            <div class="sub header">
+                A personal video streaming server
+            </div>
+        </h1>
+
+        <div class="ui big list">
+            <div class="item">
+                <i class="large blue check circle outline icon"></i>
+                <div class="content">
+                    <div class="header">
+                        Stream to any device
+                    </div>
+                    <div class="description">
+                        Store your videos in the cloud and watch them from anywhere.
+                    </div>
+                </div>
+            </div>
+            <div class="item">
+                <i class="large blue check circle outline icon"></i>
+                <div class="content">
+                    <div class="header">
+                        Protect your IP address
+                    </div>
+                    <div class="description">
+                        Torrent remotely on your server instead of your computer.
+                    </div>
+                </div>
+            </div>
+            <div class="item">
+                <i class="large blue check circle outline icon"></i>
+                <div class="content">
+                    <div class="header">
+                        Torrent on your phone
+                    </div>
+                    <div class="description">
+                        Access the interface from any web browser on any device.
+                    </div>
+                </div>
+            </div>
+            <div class="item">
+                <i class="large blue check circle outline icon"></i>
+                <div class="content">
+                    <div class="header">
+                        Stream any video
+                    </div>
+                    <div class="description">
+                        Convert videos file to the streamable (AAC/H264) MP4 format.
+                    </div>
+                </div>
+            </div>
+            <div class="item">
+                <i class="large blue check circle outline icon"></i>
+                <div class="content">
+                    <div class="header">
+                        Download from your friends
+                    </div>
+                    <div class="description">
+                        See what your friends are sharing and copy their downloads directly to your server.
+                    </div>
+                </div>
+            </div>
+            <div class="item">
+                <i class="large blue check circle outline icon"></i>
+                <div class="content">
+                    <div class="header">
+                        Take your downloads offline
+                    </div>
+                    <div class="description">
+                        Store videos on your local device for offline access.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {{if not $.Config.Get.AcceptTOS}}
+            <div class="ui hidden divider"></div>
+
+            <div class="ui one column grid">
+                <div class="center aligned one column row">
+                    <div class="column">
+                        <a href="/viewscreen/?tos=yes" class="ui huge blue button"><i class="checkmark icon"></i> Accept License &amp; Continue</a>
+                    </div>
+                </div>
+            </div>
+        {{end}}
+
+        <div class="ui hidden section divider"></div>
+
+        <div class="ui one column grid">
+            <div class="center aligned one column row">
+                <div class="column">
+                    <video id="screencast" class="screencast ui bordered rounded image" controls="controls" preload="auto" loop="loop" muted="muted" autoplay="autoplay">
+                        <source src="/viewscreen/static/screencast1.mp4?updated=578923892">
+                    </video>
+
+                </div>
+            </div>
+        </div>
+
+        <div class="ui hidden section divider"></div>
+
+        <h2 class="ui center aligned header">License</h2>
+        <p>
+            MIT License
+        </p>
+
+        <p>
+            Copyright (c) 2017 Viewscreen Cloud
+        </p>
+
+        <p>
+            Permission is hereby granted, free of charge, to any person obtaining a copy
+            of this software and associated documentation files (the "Software"), to deal
+            in the Software without restriction, including without limitation the rights
+            to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+            copies of the Software, and to permit persons to whom the Software is
+            furnished to do so, subject to the following conditions:
+        </p>
+
+        <p>
+            The above copyright notice and this permission notice shall be included in all
+            copies or substantial portions of the Software.
+        </p>
+
+        <p>
+            THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+            IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+            FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+            AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+            LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+            OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+            SOFTWARE.
+        </p>
+    </div>
+
+</div>
+
+<script>
+    $(document).ready(function() {
+        $('#play-video').click(function() {
+            $('#screencast')[0].play();
+        });
+    });
+</script>
+
+{{template "footer.html" .}}

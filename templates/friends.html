@@ -1,10 +1,10 @@
 {{template "header.html" .}}
 
 <div class="ui container">
-    <form class="ui large form" method="POST" action="/watcher/friends/add">
+    <form class="ui large form" method="POST" action="/viewscreen/friends/add">
         <div class="field">
             <div class="ui action input">
-                <input type="text" name="host" placeholder="e.g. friend.example.com">
+                <input type="text" name="host" placeholder="e.g. friend.example.com" pattern=".{3,}" title="e.g. friend.example.com">
                 <button type="submit" class="ui right floated primary button">Add Friend</button>
             </div>
         </div>
@@ -17,7 +17,7 @@
             {{$downloads := $friend.Downloads}}
 
             <h3>
-                <a href="/watcher/friends/remove/{{$friend.ID}}" data-prompt="Delete {{$friend.ID}}?" class="confirm ui right floated basic mini red icon button"><i class="trash icon"></i></a>
+                <a href="/viewscreen/friends/remove/{{$friend.ID}}" data-prompt="Delete {{$friend.ID}}?" class="confirm ui right floated basic mini red icon button"><i class="trash icon"></i></a>
                 {{if $downloads}}
                     <i class="circle green icon"></i>{{$friend.ID}}
                 {{else}}
@@ -39,7 +39,7 @@
                         </td>
                         <td class="right aligned two wide mobile">
 							<button class="{{if not $dlexists}}hide{{end}} toggler ui mini icon button" disabled><i class="cloud download icon"></i></button>
-							<button class="{{if $dlexists }}hide{{end}} toggler ui mini icon button" data-action="/watcher/friends/download/{{$friend.ID}}/{{$dl.ID}}"><i class="cloud download icon"></i></a>
+							<button class="{{if $dlexists }}hide{{end}} toggler ui mini icon button" data-action="/viewscreen/friends/download/{{$friend.ID}}/{{$dl.ID}}"><i class="cloud download icon"></i></a>
                         </td>
                     </tr>
                 {{end}}

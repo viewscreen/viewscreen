@@ -322,9 +322,9 @@ func (l *Downloader) transfer(t *Transfer) {
 
 	var err error
 	// Transfer
-	if strings.HasPrefix(path, "/watcher/v1/downloads/files/") && friend != "" {
+	if strings.HasPrefix(path, "/viewscreen/v1/downloads/files/") && friend != "" {
 		// 1. Friend Download - v1 API friend download URL
-		// e.g. https://example.com/watcher/v1/downloads/files/<download>?friend=<host>
+		// e.g. https://example.com/viewscreen/v1/downloads/files/<download>?friend=<host>
 		err = l.transferFriend(ctx, t)
 	} else {
 		// 2. Torrent
@@ -501,7 +501,7 @@ func (l *Downloader) transferFriend(ctx context.Context, t *Transfer) error {
 		}
 
 		// Write file to directory.
-		endpoint := fmt.Sprintf("https://%s/watcher/v1/downloads/stream/%s/%s?friend=%s", host, downloadID, file.ID, me)
+		endpoint := fmt.Sprintf("https://%s/viewscreen/v1/downloads/stream/%s/%s?friend=%s", host, downloadID, file.ID, me)
 
 		l.Config.Logger.Debugf("Downloading friend's file %s %s", file.ID, endpoint)
 
@@ -870,6 +870,9 @@ func (t Transfer) String() string {
 		seconds := time.Since(start).Seconds()
 		if seconds > 0.2 {
 			log.Debugf("String() took %.2f seconds", seconds)
+		}
+		if name == "" {
+			name = "Loading..."
 		}
 		return name
 	}
