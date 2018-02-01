@@ -1,4 +1,4 @@
-# viewscreen - self-hosted video streaming server written in Go
+# Viewscreen - a personal video streaming server
 
 ![Screencast](https://raw.githubusercontent.com/viewscreen/viewscreen/master/screencast.gif?updated1)
 
@@ -53,6 +53,7 @@ Running Viewscreen on a VPS is designed to be as simple as possible.
 * Distribution: Ubuntu 16.04 (Xenial)
 * Memory: 1GB+
 * Storage: 20GB+
+
 
 **Recommended Providers**
 
