@@ -27,7 +27,7 @@
 
 Email viewscreen@portal.cloud
 
-## Running Soundscape on Portal
+## Run Viewscreen on Portal
 
 Portal is a hosting company that makes it easy to run self-hosted apps like Soundscape (music), Viewscreen (video), and Subspace (vpn) on a private cloud server.
 
@@ -35,7 +35,15 @@ Portal supports the self-hosted community by creating 100% open source apps usin
 
 [Try a cloud server for free at portal.cloud](https://portal.cloud/)
 
-## Running Soundscape on a VPS
+## Run Viewscreen on a VPS
+
+Running Viewscreen on a VPS is designed to be as simple as possible.
+
+  * Public Docker image
+  * Single static Go binary with assets bundled
+  * Automatic TLS using Let's Encrypt
+  * Redirects http to https
+  * Works with a reverse proxy or standalone
 
 ### 1. Get a server
 
