@@ -1,5 +1,5 @@
 FROM alpine:latest
-MAINTAINER viewscreen Cloud <github@viewscreen.cloud>
+MAINTAINER viewscreen <viewscreen@portal.cloud>
 
 RUN apk --no-cache add \
     curl \

@@ -11,17 +11,17 @@
 ## Features
 
 * **Stream to any device**
- * Store your videos in the cloud and watch them from anywhere.
+  * Store your videos in the cloud and watch them from anywhere.
 * **Protect your IP address**
- * Torrent remotely on your server instead of your computer.
+  * Torrent remotely on your server instead of your computer.
 * **Torrent on your phone**
- * Access the interface from any web browser on any device.
+  * Access the interface from any web browser on any device.
 * **Stream any video**
- * Convert videos file to the streamable (AAC/H264) MP4 format.
+  * Convert videos file to the streamable (AAC/H264) MP4 format.
 * **Download from your friends**
- * See what your friends are sharing and copy their downloads directly to your server.
+  * See what your friends are sharing and copy their downloads directly to your server.
 * **Take your downloads offline**
- * Store videos on your local device for offline access.
+  * Store videos on your local device for offline access.
 
 ## Help / Reporting Bugs
 
