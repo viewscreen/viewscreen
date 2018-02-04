@@ -1071,7 +1071,14 @@ func main() {
 
 	// Let's Encrypt TLS mode
 
-	// http redirect to https
+	// autocert
+	certmanager := autocert.Manager{
+		Prompt:     autocert.AcceptTOS,
+		Cache:      autocert.DirCache(filepath.Join(downloadDir, ".autocert")),
+		HostPolicy: autocert.HostWhitelist(httpHost, "www."+httpHost),
+	}
+
+	// http redirect to https and Let's Encrypt auth
 	go func() {
 		redir := httprouter.New()
 		redir.GET("/*path", func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
@@ -1081,27 +1088,19 @@ func main() {
 		})
 
 		httpd := &http.Server{
-			Handler:        redir,
+			Handler:        certmanager.HTTPHandler(redir),
 			Addr:           net.JoinHostPort(httpIP, "80"),
 			WriteTimeout:   httpTimeout,
 			ReadTimeout:    httpTimeout,
 			MaxHeaderBytes: maxHeaderBytes,
 		}
 		if err := httpd.ListenAndServe(); err != nil {
-			logger.Warnf("skipping redirect http port 80 to https port %s (%s)", httpPort, err)
+			logger.Fatalf("http server on port 80 failed: %s", err)
 		}
 	}()
-
-	// autocert
-	m := autocert.Manager{
-		Prompt:     autocert.AcceptTOS,
-		Cache:      autocert.DirCache(filepath.Join(downloadDir, ".autocert")),
-		HostPolicy: autocert.HostWhitelist(httpHost, "www."+httpHost),
-	}
-
 	// TLS
 	tlsConfig := tls.Config{
-		GetCertificate: m.GetCertificate,
+		GetCertificate: certmanager.GetCertificate,
 		NextProtos:     []string{"http/1.1"}, // TODO: investigate any HTTP 2 issues.
 		Rand:           rand.Reader,
 		PreferServerCipherSuites: true,
